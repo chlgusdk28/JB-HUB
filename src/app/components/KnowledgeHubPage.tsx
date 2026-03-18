@@ -19,7 +19,7 @@ import {
   Trash2,
   User,
 } from 'lucide-react'
-import { Pill } from './common'
+import { MetricCard, PageHeader, PageShell, Pill } from './common'
 import { OpalButton } from './opal/OpalButton'
 import { OpalCard } from './opal/OpalCard'
 import { OpalTag } from './opal/OpalTag'
@@ -873,31 +873,13 @@ export function KnowledgeHubPage() {
   }
 
   return (
-    <div className="knowledge-shell">
-      <div className="floating-orb-bg-left" aria-hidden />
-      <div className="floating-orb-bg-right" aria-hidden />
-      <div className="floating-orb-bg-bottom" aria-hidden />
-
-      <div className="knowledge-stage">
-        <header className="hero-panel knowledge-hero">
-        <div className="floating-orb-hero-right" />
-        <div className="floating-orb-hero-left" />
-        <div className="relative z-10 space-y-6">
-          <div className="knowledge-hero-grid">
-            <div className="space-y-6">
-          <p className="inline-flex items-center gap-2 rounded-full border border-white/45 bg-white/15 px-3 py-1 text-xs font-semibold tracking-[0.08em] text-slate-50">
-            Knowledge Hub
-            <span className="h-1 w-1 rounded-full bg-slate-200" />
-            질문과 답변
-          </p>
-          <h1 className="max-w-3xl text-2xl font-bold leading-[1.12] tracking-tight text-white sm:text-3xl lg:text-4xl">
-            지식인
-            <span className="text-gradient-brand block">팀의 궁금증을 해결하는 실전 Q&A 허브</span>
-          </h1>
-          <p className="max-w-3xl text-sm text-slate-100 sm:text-base">
-            질문, 채택, 북마크, 공유, 내보내기까지 가능한 운영형 Q&A 공간입니다.
-          </p>
-          <div className="action-row">
+    <PageShell density="compact">
+      <PageHeader
+        eyebrow="Knowledge Hub"
+        title="지식인"
+        description="팀의 궁금증을 해결하는 실전 Q&A 허브입니다. 질문, 채택, 북마크, 공유, 내보내기까지 같은 화면 흐름 안에서 관리할 수 있습니다."
+        actions={
+          <>
             <OpalButton variant="primary" size="sm" icon={<CirclePlus className="h-4 w-4" />} onClick={() => setShowComposer(true)}>
               새 질문 작성
             </OpalButton>
@@ -910,52 +892,27 @@ export function KnowledgeHubPage() {
             <OpalButton variant="secondary" size="sm" icon={<RotateCcw className="h-4 w-4" />} onClick={resetFilters}>
               필터 초기화
             </OpalButton>
-          </div>
-          <div className="pill-row">
-            <Pill>전체 질문 {summary.total}</Pill>
-            <Pill>해결률 {summary.resolutionRate}%</Pill>
-            <Pill>누적 답변 {summary.answers}</Pill>
-            <Pill>내 질문 {summary.myQuestions}</Pill>
-            <Pill>북마크 {summary.bookmarked}</Pill>
-            <Pill>
-              평균 첫 답변 {summary.averageFirstResponseMinutes !== null ? `${summary.averageFirstResponseMinutes}분` : '데이터 없음'}
-            </Pill>
-          </div>
-            </div>
+          </>
+        }
+        meta={
+          <>
+            <Pill variant="subtle">전체 질문 {summary.total}</Pill>
+            <Pill variant="subtle">해결률 {summary.resolutionRate}%</Pill>
+            <Pill variant="subtle">누적 답변 {summary.answers}</Pill>
+            <Pill variant="subtle">내 질문 {summary.myQuestions}</Pill>
+            <Pill variant="subtle">북마크 {summary.bookmarked}</Pill>
+          </>
+        }
+      />
 
-            <div className="knowledge-kpi-grid">
-              <article className="knowledge-kpi-card">
-                <p className="knowledge-kpi-label">전체 질문</p>
-                <p className="knowledge-kpi-value">{summary.total}</p>
-              </article>
-              <article className="knowledge-kpi-card">
-                <p className="knowledge-kpi-label">해결된 질문</p>
-                <p className="knowledge-kpi-value">{summary.resolved}</p>
-              </article>
-              <article className="knowledge-kpi-card">
-                <p className="knowledge-kpi-label">미해결 질문</p>
-                <p className="knowledge-kpi-value">{summary.unresolved}</p>
-              </article>
-              <article className="knowledge-kpi-card">
-                <p className="knowledge-kpi-label">누적 답변</p>
-                <p className="knowledge-kpi-value">{summary.answers}</p>
-              </article>
-              <article className="knowledge-kpi-card">
-                <p className="knowledge-kpi-label">내 질문</p>
-                <p className="knowledge-kpi-value">{summary.myQuestions}</p>
-              </article>
-              <article className="knowledge-kpi-card">
-                <p className="knowledge-kpi-label">평균 첫 답변</p>
-                <p className="knowledge-kpi-value">
-                  {summary.averageFirstResponseMinutes !== null ? `${summary.averageFirstResponseMinutes}분` : '-'}
-                </p>
-              </article>
-            </div>
-          </div>
-        </div>
-        </header>
+      <section className="page-metric-grid">
+        <MetricCard label="전체 질문" value={summary.total} />
+        <MetricCard label="해결된 질문" value={summary.resolved} />
+        <MetricCard label="미해결 질문" value={summary.unresolved} />
+        <MetricCard label="누적 답변" value={summary.answers} />
+      </section>
 
-        <section className="filter-panel knowledge-command-deck">
+      <section className="page-toolbar-panel page-toolbar-stack knowledge-command-deck">
         <div className="space-y-4">
             <div className="knowledge-search-grid">
             <div className="relative">
@@ -1158,7 +1115,7 @@ export function KnowledgeHubPage() {
             </form>
           ) : null}
         </div>
-        </section>
+      </section>
 
         <section className="knowledge-feed">
           {filteredQuestions.map((question, index) => {
@@ -1508,7 +1465,6 @@ export function KnowledgeHubPage() {
           </div>
         ) : null}
         </section>
-      </div>
-    </div>
+    </PageShell>
   )
 }

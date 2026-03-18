@@ -885,6 +885,7 @@ export default function RestoredHubApp() {
         <UserDashboard
           projects={projects as never}
           favoriteIds={favoriteProjectIds}
+          recentProjectIds={recentProjectIds}
           onProjectClick={openProject}
           onNavigateToPage={(nextPage) => navigateToPage(nextPage as PageId)}
         />
@@ -923,11 +924,7 @@ export default function RestoredHubApp() {
     }
 
     if (page === 'achievements') {
-      return (
-        <div className="page-shell">
-          <UserAchievements {...achievementStats} />
-        </div>
-      )
+      return <UserAchievements {...achievementStats} />
     }
 
     if (page === 'roadmap') {
@@ -951,11 +948,7 @@ export default function RestoredHubApp() {
     }
 
     if (page === 'settings') {
-      return (
-        <div className="page-shell">
-          <UserSettings />
-        </div>
-      )
+      return <UserSettings />
     }
 
     if (page === 'projects') {

@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { Link2, Plus, RotateCcw, Sparkles, Star, X } from 'lucide-react'
-import { CategoryFilterButton, FilterChip, Pill } from '../common'
+import { CategoryFilterButton, FilterChip, MetricCard, PageHeader, PageShell, Pill } from '../common'
 import { OpalButton } from '../opal'
 import type { CategoryDefinition, Project, SortOption } from '../../lib/project-utils'
 import { fetchPublicSiteContent, readSiteContentValue, type PublicSiteContent } from '../../lib/site-content-api'
@@ -106,186 +106,174 @@ function ExplorePageViewBase({
   )
 
   return (
-    <div className="page-shell">
-      <header className="page-header-plain explore-stage space-y-4">
-        <div className="explore-intro-grid">
-          <div className="fade-up flex flex-col gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{exploreTitle}</h1>
-            <p className="max-w-4xl text-sm text-slate-600 xl:max-w-5xl">{exploreDescription}</p>
-            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">
-              현재 적용 중인 필터 {activeFilterCount}개
-            </p>
+    <PageShell density="compact">
+      <PageHeader
+        eyebrow="Project Explorer"
+        title={exploreTitle}
+        description={exploreDescription}
+        meta={
+          <>
+            <Pill variant="subtle">카테고리: {activeCategoryLabel}</Pill>
+            <Pill variant="subtle">부서: {activeDepartmentLabel}</Pill>
+            <Pill variant="subtle">정렬: {activeSortLabel}</Pill>
+            <Pill variant="subtle">필터 {activeFilterCount}개</Pill>
+          </>
+        }
+      />
+
+      <section className="page-metric-grid">
+        <MetricCard label="결과 수" value={visibleProjects.length} />
+        <MetricCard label="적용 필터" value={activeFilterCount} />
+        <MetricCard label="최소 스타" value={Math.max(0, minStars)} />
+        <MetricCard label="현재 부서" value={activeDepartmentLabel} />
+      </section>
+
+      <section className="page-toolbar-panel page-toolbar-stack">
+        <div className="page-toolbar-row">
+          <div className="action-row action-row-scroll">
+            <OpalButton
+              variant={showFavoritesOnly ? 'primary' : 'secondary'}
+              size="sm"
+              icon={<Star className={`h-4 w-4 ${showFavoritesOnly ? 'fill-white text-white' : ''}`} />}
+              onClick={onToggleFavoritesOnly}
+              aria-pressed={showFavoritesOnly}
+            >
+              즐겨찾기만
+            </OpalButton>
+            <OpalButton
+              variant={showNewOnly ? 'primary' : 'secondary'}
+              size="sm"
+              icon={<Sparkles className={`h-4 w-4 ${showNewOnly ? 'text-white' : ''}`} />}
+              onClick={onToggleNewOnly}
+              aria-pressed={showNewOnly}
+            >
+              신규만
+            </OpalButton>
+            <OpalButton variant="secondary" size="sm" icon={<Plus className="h-4 w-4" />} onClick={onFavoriteVisible}>
+              현재 목록 저장
+            </OpalButton>
+            <OpalButton variant="secondary" size="sm" icon={<Link2 className="h-4 w-4" />} onClick={onShareCurrentView}>
+              현재 보기 공유
+            </OpalButton>
+            <OpalButton variant="secondary" size="sm" icon={<RotateCcw className="h-4 w-4" />} onClick={onResetFilters}>
+              필터 초기화
+            </OpalButton>
           </div>
-          <div className="explore-summary-card fade-up">
-            <div className="explore-summary-grid">
-              <div className="explore-summary-item">
-                <span className="explore-summary-label">Results</span>
-                <strong className="explore-summary-value">{visibleProjects.length}</strong>
-              </div>
-              <div className="explore-summary-item">
-                <span className="explore-summary-label">Filters</span>
-                <strong className="explore-summary-value">{activeFilterCount}</strong>
-              </div>
-              <div className="explore-summary-item">
-                <span className="explore-summary-label">Stars</span>
-                <strong className="explore-summary-value">{Math.max(0, minStars)}</strong>
-              </div>
-            </div>
-          </div>
+          <span className="page-toolbar-note">현재 적용 중인 필터 {activeFilterCount}개</span>
         </div>
 
-        <div className="filter-panel">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="action-row action-row-scroll">
-              <OpalButton
-                variant={showFavoritesOnly ? 'primary' : 'secondary'}
-                size="sm"
-                icon={<Star className={`h-4 w-4 ${showFavoritesOnly ? 'fill-white text-white' : ''}`} />}
-                onClick={onToggleFavoritesOnly}
-                aria-pressed={showFavoritesOnly}
-              >
-                즐겨찾기만
-              </OpalButton>
-              <OpalButton
-                variant={showNewOnly ? 'primary' : 'secondary'}
-                size="sm"
-                icon={<Sparkles className={`h-4 w-4 ${showNewOnly ? 'text-white' : ''}`} />}
-                onClick={onToggleNewOnly}
-                aria-pressed={showNewOnly}
-              >
-                신규만
-              </OpalButton>
-              <OpalButton variant="secondary" size="sm" icon={<Plus className="h-4 w-4" />} onClick={onFavoriteVisible}>
-                현재 목록 저장
-              </OpalButton>
-              <OpalButton variant="secondary" size="sm" icon={<Link2 className="h-4 w-4" />} onClick={onShareCurrentView}>
-                현재 보기 공유
-              </OpalButton>
-              <OpalButton variant="secondary" size="sm" icon={<RotateCcw className="h-4 w-4" />} onClick={onResetFilters}>
-                필터 초기화
-              </OpalButton>
-            </div>
-
-            <div className="pill-row">
-              <Pill variant="subtle">카테고리: {activeCategoryLabel}</Pill>
-              <Pill variant="subtle">부서: {activeDepartmentLabel}</Pill>
-              <Pill variant="subtle">정렬: {activeSortLabel}</Pill>
-              <Pill variant="subtle">최소 스타: {Math.max(0, minStars)}</Pill>
-              <Pill variant="subtle">결과: {visibleProjects.length}</Pill>
-            </div>
-          </div>
-
-          <div className="explore-active-filter-shell mt-4">
-            {activeFilterChips.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {activeFilterChips.map((chip) => (
-                  <button
-                    key={chip.key}
-                    type="button"
-                    onClick={chip.onRemove}
-                    className="filter-chip-removable"
-                    aria-label={`${chip.label} 필터 제거`}
-                  >
-                    <span className="font-semibold">{chip.label}</span>
-                    <span>{chip.value}</span>
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                ))}
-                <button type="button" onClick={onResetFilters} className="filter-chip-clear">
-                  모두 해제
+        <div className="explore-active-filter-shell">
+          {activeFilterChips.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {activeFilterChips.map((chip) => (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={chip.onRemove}
+                  className="filter-chip-removable"
+                  aria-label={`${chip.label} 필터 제거`}
+                >
+                  <span className="font-semibold">{chip.label}</span>
+                  <span>{chip.value}</span>
+                  <X className="h-3.5 w-3.5" />
                 </button>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500">
-                적용 중인 필터가 없습니다. 카테고리와 정렬 조건을 조합해서 탐색 범위를 좁혀보세요.
-              </p>
-            )}
+              ))}
+              <button type="button" onClick={onResetFilters} className="filter-chip-clear">
+                모두 해제
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">
+              적용 중인 필터가 없습니다. 카테고리와 정렬 조건을 조합해서 탐색 범위를 좁혀보세요.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="page-panel-lg">
+        <div className="explore-filter-grid">
+          <div className="explore-category-panel">
+            <div className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">카테고리</div>
+            <div className="flex flex-wrap gap-2">
+              {categoryDefinitions.map((category) => (
+                <CategoryFilterButton
+                  key={category.id}
+                  label={categoryLabels[category.id] ?? category.id}
+                  count={categoryCounts[category.id] ?? 0}
+                  isActive={selectedCategory === category.id}
+                  onClick={() => onSelectCategory(category.id)}
+                />
+              ))}
+            </div>
           </div>
 
-          <div className="explore-filter-grid">
-            <div className="explore-category-panel">
-              <div className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">카테고리</div>
-              <div className="flex flex-wrap gap-2">
-                {categoryDefinitions.map((category) => (
-                  <CategoryFilterButton
-                    key={category.id}
-                    label={categoryLabels[category.id] ?? category.id}
-                    count={categoryCounts[category.id] ?? 0}
-                    isActive={selectedCategory === category.id}
-                    onClick={() => onSelectCategory(category.id)}
-                  />
-                ))}
-              </div>
+          <div className="explore-refine-panel">
+            <label htmlFor="sort-projects" className="field-label">
+              정렬
+            </label>
+            <select
+              id="sort-projects"
+              value={sortBy}
+              onChange={(event) => onSortChange(event.target.value as SortOption)}
+              className="select-soft"
+            >
+              {Object.entries(sortOptionLabels).map(([option, label]) => (
+                <option key={option} value={option}>
+                  {label}
+                </option>
+              ))}
+            </select>
+
+            <label htmlFor="department-projects" className="field-label">
+              부서
+            </label>
+            <select
+              id="department-projects"
+              value={selectedDepartment}
+              onChange={(event) => onDepartmentChange(event.target.value)}
+              className="select-soft"
+            >
+              {departmentOptions.map((department) => (
+                <option key={department} value={department}>
+                  {department === 'all' ? '전체 부서' : department}
+                </option>
+              ))}
+            </select>
+
+            <label htmlFor="min-stars" className="field-label">
+              최소 스타
+            </label>
+            <input
+              id="min-stars"
+              type="number"
+              min={0}
+              step={1}
+              value={Math.max(0, minStars)}
+              onChange={(event) => {
+                const value = Number.parseInt(event.target.value, 10)
+                onMinStarsChange(Number.isNaN(value) ? 0 : Math.max(0, value))
+              }}
+              className="select-soft"
+            />
+
+            <div className="flex flex-wrap gap-1.5">
+              {MIN_STAR_PRESETS.map((preset) => {
+                const active = Math.max(0, Math.floor(minStars)) === preset
+                return (
+                  <FilterChip
+                    key={`min-star-${preset}`}
+                    onClick={() => onMinStarsChange(preset)}
+                    isActive={active}
+                  >
+                    {preset === 0 ? '제한 없음' : `${preset}+`}
+                  </FilterChip>
+                )
+              })}
             </div>
-
-            <div className="explore-refine-panel">
-              <label htmlFor="sort-projects" className="field-label">
-                정렬
-              </label>
-              <select
-                id="sort-projects"
-                value={sortBy}
-                onChange={(event) => onSortChange(event.target.value as SortOption)}
-                className="select-soft"
-              >
-                {Object.entries(sortOptionLabels).map(([option, label]) => (
-                  <option key={option} value={option}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-
-              <label htmlFor="department-projects" className="field-label">
-                부서
-              </label>
-              <select
-                id="department-projects"
-                value={selectedDepartment}
-                onChange={(event) => onDepartmentChange(event.target.value)}
-                className="select-soft"
-              >
-                {departmentOptions.map((department) => (
-                  <option key={department} value={department}>
-                    {department === 'all' ? '전체 부서' : department}
-                  </option>
-                ))}
-              </select>
-
-              <label htmlFor="min-stars" className="field-label">
-                최소 스타
-              </label>
-              <input
-                id="min-stars"
-                type="number"
-                min={0}
-                step={1}
-                value={Math.max(0, minStars)}
-                onChange={(event) => {
-                  const value = Number.parseInt(event.target.value, 10)
-                  onMinStarsChange(Number.isNaN(value) ? 0 : Math.max(0, value))
-                }}
-                className="select-soft"
-              />
-
-              <div className="flex flex-wrap gap-1.5">
-                {MIN_STAR_PRESETS.map((preset) => {
-                  const active = Math.max(0, Math.floor(minStars)) === preset
-                  return (
-                    <FilterChip
-                      key={`min-star-${preset}`}
-                      onClick={() => onMinStarsChange(preset)}
-                      isActive={active}
-                    >
-                      {preset === 0 ? '제한 없음' : `${preset}+`}
-                    </FilterChip>
-                  )
-                })}
-              </div>
-              <p className="text-xs text-slate-500">빠른 검색 단축키: `/` 또는 `Ctrl/Cmd + K`</p>
-            </div>
+            <p className="text-xs text-slate-500">빠른 검색 단축키: `/` 또는 `Ctrl/Cmd + K`</p>
           </div>
         </div>
-      </header>
+      </section>
 
       <section className="explore-results-grid">
         {visibleProjects.map((project, index) => renderProjectCard(project, undefined, index))}
@@ -301,7 +289,7 @@ function ExplorePageViewBase({
           </div>
         ) : null}
       </section>
-    </div>
+    </PageShell>
   )
 }
 

@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { Clock3, Download, RotateCcw, Sparkles } from 'lucide-react'
-import { MetricCard, Pill, ProjectSection } from '../common'
+import { MetricCard, PageHeader, PageShell, Pill, ProjectSection } from '../common'
 import { OpalButton } from '../opal'
 import type { Project } from '../../lib/project-utils'
 import { fetchPublicSiteContent, readSiteContentValue, type PublicSiteContent } from '../../lib/site-content-api'
@@ -112,53 +112,39 @@ function HomePageViewBase({
   ]
 
   return (
-    <div className="page-shell-relaxed page-shell-no-top">
-      <header className="fade-up pt-8 sm:pt-12 lg:pt-16">
-        <div className="hero-panel">
-          <div className="floating-orb-hero-right" />
-          <div className="floating-orb-hero-left" />
-          <div className="relative z-10 hero-panel-grid">
-            <div className="hero-panel-copy">
-              <p className="inline-flex items-center gap-2 rounded-full border border-white/45 bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-50">
-                {eyebrow}
-              </p>
-              <h1 className="text-3xl font-extrabold leading-[1.06] tracking-tight text-white sm:text-4xl lg:text-5xl">
-                {homeTitle}
-                <span className="text-gradient-brand block">{homeHighlight}</span>
-              </h1>
-              <p className="text-sm text-slate-100 sm:text-base">{homeDescription}</p>
-            </div>
-            <div className="hero-spotlight-card">
-              <div className="hero-spotlight-grid">
-                {summaryMetrics.slice(0, 4).map((metric) => (
-                  <div key={`hero-${metric.key}`} className="hero-spotlight-item">
-                    <span className="hero-spotlight-label">{metric.label}</span>
-                    <strong className="hero-spotlight-value">{metric.value}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="action-row hero-panel-actions">
-              <OpalButton variant="secondary" size="sm" icon={<Download className="h-4 w-4" />} onClick={onExportFavorites}>
-                즐겨찾기 내보내기
-              </OpalButton>
-              <OpalButton variant="secondary" size="sm" icon={<RotateCcw className="h-4 w-4" />} onClick={onResetFilters}>
-                필터 초기화
-              </OpalButton>
-              <OpalButton variant="primary" size="sm" icon={<Sparkles className="h-4 w-4" />} onClick={onSurpriseMe}>
-                랜덤 추천
-              </OpalButton>
-            </div>
-          </div>
-          <div className="pill-row relative z-10 mt-5">
-            <Pill>카테고리: {activeCategoryLabel}</Pill>
-            <Pill>정렬: {activeSortLabel}</Pill>
-            <Pill>결과: {visibleProjectsCount}</Pill>
-          </div>
-        </div>
-      </header>
+    <PageShell density="relaxed" topInset="none">
+      <PageHeader
+        eyebrow={eyebrow}
+        title={
+          <>
+            {homeTitle}
+            <span className="text-gradient-brand block">{homeHighlight}</span>
+          </>
+        }
+        description={homeDescription}
+        actions={
+          <>
+            <OpalButton variant="secondary" size="sm" icon={<Download className="h-4 w-4" />} onClick={onExportFavorites}>
+              즐겨찾기 내보내기
+            </OpalButton>
+            <OpalButton variant="secondary" size="sm" icon={<RotateCcw className="h-4 w-4" />} onClick={onResetFilters}>
+              필터 초기화
+            </OpalButton>
+            <OpalButton variant="primary" size="sm" icon={<Sparkles className="h-4 w-4" />} onClick={onSurpriseMe}>
+              랜덤 추천
+            </OpalButton>
+          </>
+        }
+        meta={
+          <>
+            <Pill variant="subtle">카테고리: {activeCategoryLabel}</Pill>
+            <Pill variant="subtle">정렬: {activeSortLabel}</Pill>
+            <Pill variant="subtle">결과: {visibleProjectsCount}</Pill>
+          </>
+        }
+      />
 
-      <section className="home-metric-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="home-metric-grid page-metric-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {summaryMetrics.map((metric) => (
           <MetricCard
             key={metric.key}
@@ -188,7 +174,7 @@ function HomePageViewBase({
           }
         />
       ))}
-    </div>
+    </PageShell>
   )
 }
 

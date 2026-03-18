@@ -1,12 +1,27 @@
 import { useMemo, useState } from 'react'
-import { Eye, GitFork, Globe, Lock, Star, TrendingUp } from 'lucide-react'
-import type { Project } from '../lib/project-utils'
+import { Eye, GitFork, Globe, Lock, Sparkles, Star, TrendingUp } from 'lucide-react'
+import { MetricCard, PageHeader, PageShell, Pill, ProjectSection } from './common'
 import { OpalButton } from './opal/OpalButton'
 import { OpalCard } from './opal/OpalCard'
 import { OpalProjectCard } from './opal/OpalProjectCard'
 
+interface ProfileProject {
+  id: number
+  title: string
+  description: string
+  author: string
+  department: string
+  stars: number
+  forks: number
+  comments: number
+  views: number
+  tags: string[]
+  createdAt?: string
+  isNew?: boolean
+}
+
 interface UserProfileProps {
-  projects: Project[]
+  projects: ProfileProject[]
   favoriteIds: number[]
   recentProjectIds: number[]
   currentUser: {
@@ -27,169 +42,226 @@ export function UserProfile({
 
   const ownedProjects = useMemo(
     () => projects.filter((project) => project.author === currentUser.name),
-    [projects, currentUser.name],
+    [currentUser.name, projects],
   )
 
   const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds])
 
   const favoriteProjects = useMemo(
-    () => projects.filter((project) => favoriteSet.has(project.id)).sort((a, b) => b.stars - a.stars),
-    [projects, favoriteSet],
+    () => projects.filter((project) => favoriteSet.has(project.id)).sort((left, right) => right.stars - left.stars),
+    [favoriteSet, projects],
   )
 
-  const recentProjects = useMemo(() => {
-    return recentProjectIds
-      .map((id) => projects.find((project) => project.id === id))
-      .filter((project): project is Project => Boolean(project))
-  }, [recentProjectIds, projects])
+  const recentProjects = useMemo(
+    () =>
+      recentProjectIds
+        .map((id) => projects.find((project) => project.id === id))
+        .filter((project): project is ProfileProject => Boolean(project)),
+    [projects, recentProjectIds],
+  )
 
-  const ownedStats = useMemo(() => {
-    return ownedProjects.reduce(
-      (acc, project) => {
-        acc.stars += project.stars
-        acc.forks += project.forks
-        acc.views += project.views
-        return acc
-      },
-      { stars: 0, forks: 0, views: 0 },
-    )
-  }, [ownedProjects])
+  const ownedStats = useMemo(
+    () =>
+      ownedProjects.reduce(
+        (accumulator, project) => {
+          accumulator.stars += project.stars
+          accumulator.forks += project.forks
+          accumulator.views += project.views
+          return accumulator
+        },
+        { stars: 0, forks: 0, views: 0 },
+      ),
+    [ownedProjects],
+  )
 
   const topTags = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const project of ownedProjects) {
-      for (const tag of project.tags) {
+
+    ownedProjects.forEach((project) => {
+      project.tags.forEach((tag) => {
         counts.set(tag, (counts.get(tag) ?? 0) + 1)
-      }
-    }
+      })
+    })
 
     return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
+      .sort((left, right) => right[1] - left[1])
       .slice(0, 8)
   }, [ownedProjects])
 
-  return (
-    <div className="page-shell">
-      <header className="surface-panel rounded-2xl p-6 sm:p-8">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-200 text-2xl font-bold text-slate-700">
-              {currentUser.name.slice(0, 1)}
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{currentUser.name}</h1>
-              <p className="text-sm text-slate-600">{currentUser.department}</p>
-              <div className="mt-2 flex items-center gap-2">
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  프로젝트 {ownedProjects.length}개
-                </span>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  즐겨찾기 {favoriteProjects.length}개
-                </span>
-              </div>
-            </div>
-          </div>
+  const summaryMetrics = [
+    { key: 'projects', label: '내 프로젝트', value: ownedProjects.length },
+    { key: 'stars', label: '누적 스타', value: ownedStats.stars },
+    { key: 'forks', label: '누적 포크', value: ownedStats.forks },
+    { key: 'views', label: '누적 조회 수', value: ownedStats.views.toLocaleString() },
+  ]
 
-          <div className="flex flex-wrap items-center gap-2">
+  return (
+    <PageShell density="compact">
+      <PageHeader
+        eyebrow={
+          <>
+            <Sparkles className="h-3.5 w-3.5" />
+            Personal Profile
+          </>
+        }
+        title={currentUser.name}
+        description={`${currentUser.department}에서 활동 중인 사용자 프로필입니다. 프로젝트, 즐겨찾기, 최근 활동을 같은 화면 리듬 안에서 확인할 수 있도록 구성했습니다.`}
+        actions={
+          <>
             <OpalButton
               variant="secondary"
               size="sm"
               icon={isPublic ? <Globe className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-              onClick={() => setIsPublic((prev) => !prev)}
+              onClick={() => setIsPublic((previous) => !previous)}
             >
               {isPublic ? '공개 프로필' : '비공개 프로필'}
             </OpalButton>
             <OpalButton variant="secondary" size="sm">
-              공유
+              프로필 공유
             </OpalButton>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+        meta={
+          <>
+            <Pill variant="subtle">부서 {currentUser.department}</Pill>
+            <Pill variant="subtle">즐겨찾기 {favoriteProjects.length}</Pill>
+            <Pill variant="subtle">최근 본 항목 {recentProjects.length}</Pill>
+          </>
+        }
+      />
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <OpalCard padding="comfortable" elevation="minimal">
-          <div className="flex items-center gap-3">
-            <Star className="h-5 w-5 text-slate-700" />
-            <div>
-              <p className="text-xs text-slate-500">총 스타</p>
-              <p className="text-xl font-semibold text-slate-900">{ownedStats.stars}</p>
-            </div>
-          </div>
-        </OpalCard>
-        <OpalCard padding="comfortable" elevation="minimal">
-          <div className="flex items-center gap-3">
-            <GitFork className="h-5 w-5 text-slate-700" />
-            <div>
-              <p className="text-xs text-slate-500">총 포크</p>
-              <p className="text-xl font-semibold text-slate-900">{ownedStats.forks}</p>
-            </div>
-          </div>
-        </OpalCard>
-        <OpalCard padding="comfortable" elevation="minimal">
-          <div className="flex items-center gap-3">
-            <Eye className="h-5 w-5 text-slate-700" />
-            <div>
-              <p className="text-xs text-slate-500">총 조회수</p>
-              <p className="text-xl font-semibold text-slate-900">{ownedStats.views.toLocaleString()}</p>
-            </div>
-          </div>
-        </OpalCard>
-        <OpalCard padding="comfortable" elevation="minimal">
-          <div className="flex items-center gap-3">
-            <TrendingUp className="h-5 w-5 text-slate-700" />
-            <div>
-              <p className="text-xs text-slate-500">최근 방문</p>
-              <p className="text-xl font-semibold text-slate-900">{recentProjects.length}</p>
-            </div>
-          </div>
-        </OpalCard>
+      <section className="page-metric-grid">
+        {summaryMetrics.map((metric) => (
+          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
+        ))}
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold text-slate-900">주요 태그</h2>
-        <div className="flex flex-wrap gap-2">
-          {topTags.length > 0 ? (
-            topTags.map(([tag, count]) => (
-              <span
-                key={tag}
-                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
-              >
-                {tag} ({count})
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)]">
+        <OpalCard padding="comfortable" elevation="minimal">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="project-section-icon">
+                <TrendingUp className="h-5 w-5 text-slate-700" />
               </span>
-            ))
-          ) : (
-            <p className="text-sm text-slate-600">아직 태그 통계가 없습니다.</p>
+              <h2 className="text-lg font-semibold text-slate-900">프로필 요약</h2>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">공개 상태</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">{isPublic ? '공개' : '비공개'}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">즐겨찾기</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">{favoriteProjects.length}개</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">최근 활동</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">{recentProjects.length}건</p>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-900">자주 사용하는 태그</p>
+                <Pill variant="subtle">태그 {topTags.length}</Pill>
+              </div>
+              <div className="mt-3 page-tag-cloud">
+                {topTags.length > 0 ? (
+                  topTags.map(([tag, count]) => (
+                    <Pill key={tag} variant="subtle">
+                      {tag} ({count})
+                    </Pill>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-500">아직 집계된 태그가 없습니다.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </OpalCard>
+
+        <OpalCard padding="comfortable" elevation="minimal">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="project-section-icon">
+                <Eye className="h-5 w-5 text-slate-700" />
+              </span>
+              <h2 className="text-lg font-semibold text-slate-900">최근 본 프로젝트</h2>
+            </div>
+            <div className="space-y-3">
+              {recentProjects.length > 0 ? (
+                recentProjects.slice(0, 5).map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    onClick={() => onProjectClick?.(project.id)}
+                    className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-left transition hover:border-slate-300 hover:bg-white"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{project.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">{project.department}</p>
+                    </div>
+                    <span className="text-xs font-medium text-slate-500">조회 {project.views}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
+                  최근 본 프로젝트가 없습니다.
+                </p>
+              )}
+            </div>
+          </div>
+        </OpalCard>
+      </section>
+
+      {ownedProjects.length > 0 ? (
+        <ProjectSection
+          title="내 프로젝트"
+          projects={ownedProjects as never}
+          icon={<Star className="h-5 w-5 text-slate-700" />}
+          rightSlot={<Pill variant="subtle">총 {ownedProjects.length}개</Pill>}
+          renderProjectCard={(project) => (
+            <OpalProjectCard
+              key={project.id}
+              {...project}
+              density="compact"
+              onClick={() => onProjectClick?.(project.id)}
+            />
           )}
+        />
+      ) : (
+        <div className="empty-panel">
+          <p className="text-sm text-slate-600">아직 등록한 프로젝트가 없습니다.</p>
+          <p className="mt-2 text-xs text-slate-500">
+            새 프로젝트를 만들면 이 영역에서 같은 카드 패턴으로 확인할 수 있습니다.
+          </p>
         </div>
-      </section>
+      )}
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-900">내 프로젝트</h2>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {ownedProjects.map((project) => (
-            <OpalProjectCard key={project.id} {...project} onClick={() => onProjectClick?.(project.id)} />
-          ))}
-          {ownedProjects.length === 0 ? (
-            <div className="empty-panel">
-              <p className="text-sm text-slate-600">등록된 내 프로젝트가 없습니다.</p>
-            </div>
-          ) : null}
+      {favoriteProjects.length > 0 ? (
+        <ProjectSection
+          title="즐겨찾기 프로젝트"
+          projects={favoriteProjects.slice(0, 6) as never}
+          icon={<GitFork className="h-5 w-5 text-slate-700" />}
+          rightSlot={<Pill variant="subtle">총 {favoriteProjects.length}개</Pill>}
+          renderProjectCard={(project) => (
+            <OpalProjectCard
+              key={project.id}
+              {...project}
+              density="compact"
+              onClick={() => onProjectClick?.(project.id)}
+            />
+          )}
+        />
+      ) : (
+        <div className="empty-panel">
+          <p className="text-sm text-slate-600">즐겨찾기한 프로젝트가 없습니다.</p>
+          <p className="mt-2 text-xs text-slate-500">
+            관심 있는 프로젝트를 저장해 두면 이 영역에서 빠르게 다시 열 수 있습니다.
+          </p>
         </div>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-900">즐겨찾기 프로젝트</h2>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {favoriteProjects.slice(0, 6).map((project) => (
-            <OpalProjectCard key={project.id} {...project} onClick={() => onProjectClick?.(project.id)} />
-          ))}
-          {favoriteProjects.length === 0 ? (
-            <div className="empty-panel">
-              <p className="text-sm text-slate-600">즐겨찾기한 프로젝트가 없습니다.</p>
-            </div>
-          ) : null}
-        </div>
-      </section>
-    </div>
+      )}
+    </PageShell>
   )
 }
