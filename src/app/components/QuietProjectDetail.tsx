@@ -203,7 +203,7 @@ export function QuietProjectDetail({
         </div>
 
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{project.title}</h1>
-        <div className="max-w-4xl rounded-[28px] border border-slate-200/80 bg-white/84 px-5 py-4 shadow-[0_18px_40px_rgba(12,35,58,0.08)]">
+        <div className="w-full rounded-[28px] border border-slate-200/80 bg-white/84 px-5 py-4 shadow-[0_18px_40px_rgba(12,35,58,0.08)]">
           <MarkdownContent markdown={project.description} variant="hero" />
         </div>
 
@@ -263,7 +263,7 @@ export function QuietProjectDetail({
 
           <div className="space-y-3">
             <h2 className="text-xl font-semibold text-slate-900">연관 프로젝트</h2>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
               {relatedProjects.map((related) => (
                 <OpalProjectCard key={related.id} {...related} onClick={() => onOpenProject(related.id)} />
               ))}

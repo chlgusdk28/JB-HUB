@@ -111,7 +111,7 @@ function ExplorePageViewBase({
         <div className="explore-intro-grid">
           <div className="fade-up flex flex-col gap-3">
             <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{exploreTitle}</h1>
-            <p className="max-w-2xl text-sm text-slate-600">{exploreDescription}</p>
+            <p className="max-w-4xl text-sm text-slate-600 xl:max-w-5xl">{exploreDescription}</p>
             <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">
               현재 적용 중인 필터 {activeFilterCount}개
             </p>

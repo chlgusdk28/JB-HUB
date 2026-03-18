@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Grid, Image, List, Sparkles } from 'lucide-react'
-import { PageHeader, PageShell, Pill } from '../common'
+import { MetricCard, PageHeader, PageShell, Pill } from '../common'
 
 interface Project {
   id: number
@@ -41,6 +41,13 @@ const SORT_MODE_LABELS: Record<SortMode, string> = {
   comments: '댓글',
 }
 
+const VIEW_MODE_ICONS: Record<ViewMode, typeof Grid> = {
+  grid: Grid,
+  list: List,
+  card: Sparkles,
+  compact: Image,
+}
+
 export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [sortBy, setSortBy] = useState<SortMode>('newest')
@@ -74,15 +81,35 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
     }
   }, [filterDepartment, filterTag, projects, sortBy])
 
+  const activeFilterCount = Number(Boolean(filterTag)) + Number(Boolean(filterDepartment))
+  const summaryMetrics = [
+    { key: 'total', label: '전체 프로젝트', value: projects.length },
+    { key: 'visible', label: '현재 표시', value: filteredProjects.length },
+    { key: 'departments', label: '부서 범위', value: allDepartments.length },
+    { key: 'tags', label: '태그 범위', value: allTags.length },
+  ]
+
   const renderTrendBadge = (trend?: string) => {
     if (trend === 'up') {
-      return <span className="rounded-full border border-sky-200 bg-sky-100/80 px-2 py-0.5 text-[11px] font-semibold text-sky-700">상승</span>
+      return (
+        <span className="rounded-full border border-sky-200 bg-sky-100/80 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+          상승
+        </span>
+      )
     }
     if (trend === 'down') {
-      return <span className="rounded-full border border-rose-200 bg-rose-100/80 px-2 py-0.5 text-[11px] font-semibold text-rose-700">하락</span>
+      return (
+        <span className="rounded-full border border-rose-200 bg-rose-100/80 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+          하락
+        </span>
+      )
     }
     if (trend === 'stable') {
-      return <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">안정</span>
+      return (
+        <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+          안정
+        </span>
+      )
     }
     return null
   }
@@ -97,91 +124,81 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
           </>
         }
         title="프로젝트 갤러리"
-        description="프로젝트를 다양한 밀도와 표현 방식으로 살펴보면서 빠르게 비교할 수 있습니다."
+        description="프로젝트를 여러 레이아웃으로 훑어보며, 같은 기준으로 빠르게 비교할 수 있는 시각 탐색 화면입니다."
         meta={
           <>
             <Pill variant="subtle">보기: {VIEW_MODE_LABELS[viewMode]}</Pill>
             <Pill variant="subtle">정렬: {SORT_MODE_LABELS[sortBy]}</Pill>
+            <Pill variant="subtle">활성 필터: {activeFilterCount}</Pill>
             <Pill variant="subtle">결과: {filteredProjects.length}</Pill>
           </>
         }
       />
 
-      <section className="page-panel flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex rounded-full border border-slate-200 bg-white p-1">
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              className={`chip-filter !px-2.5 !py-1 ${viewMode === 'grid' ? 'chip-filter-active' : 'chip-filter-idle'}`}
-              title="그리드 뷰"
-            >
-              <Grid className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={`chip-filter !px-2.5 !py-1 ${viewMode === 'list' ? 'chip-filter-active' : 'chip-filter-idle'}`}
-              title="리스트 뷰"
-            >
-              <List className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('card')}
-              className={`chip-filter !px-2.5 !py-1 ${viewMode === 'card' ? 'chip-filter-active' : 'chip-filter-idle'}`}
-              title="카드 뷰"
-            >
-              <Sparkles className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('compact')}
-              className={`chip-filter !px-2.5 !py-1 ${viewMode === 'compact' ? 'chip-filter-active' : 'chip-filter-idle'}`}
-              title="컴팩트 뷰"
-            >
-              <Image className="h-4 w-4" />
-            </button>
+      <section className="page-metric-grid">
+        {summaryMetrics.map((metric) => (
+          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
+        ))}
+      </section>
+
+      <section className="page-toolbar-panel page-toolbar-stack">
+        <div className="page-toolbar-row">
+          <div className="page-toggle-cluster">
+            {(Object.keys(VIEW_MODE_LABELS) as ViewMode[]).map((mode) => {
+              const Icon = VIEW_MODE_ICONS[mode]
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  className={`page-toggle-button ${
+                    viewMode === mode ? 'page-toggle-button-active' : 'page-toggle-button-idle'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {VIEW_MODE_LABELS[mode]}
+                </button>
+              )
+            })}
           </div>
 
-          <select
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value as SortMode)}
-            className="select-soft max-w-[10rem]"
-          >
-            <option value="newest">기본 정렬</option>
-            <option value="stars">스타순</option>
-            <option value="views">조회수순</option>
-            <option value="comments">댓글순</option>
-          </select>
+          <div className="page-toolbar-cluster">
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="select-soft max-w-[11rem]">
+              <option value="newest">기본 정렬</option>
+              <option value="stars">스타순</option>
+              <option value="views">조회수순</option>
+              <option value="comments">댓글순</option>
+            </select>
 
-          <select
-            value={filterDepartment}
-            onChange={(event) => setFilterDepartment(event.target.value)}
-            className="select-soft max-w-[11rem]"
-          >
-            <option value="">전체 부서</option>
-            {allDepartments.map((department) => (
-              <option key={department} value={department}>
-                {department}
-              </option>
-            ))}
-          </select>
+            <select
+              value={filterDepartment}
+              onChange={(event) => setFilterDepartment(event.target.value)}
+              className="select-soft max-w-[12rem]"
+            >
+              <option value="">전체 부서</option>
+              {allDepartments.map((department) => (
+                <option key={department} value={department}>
+                  {department}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={filterTag}
-            onChange={(event) => setFilterTag(event.target.value)}
-            className="select-soft max-w-[11rem]"
-          >
-            <option value="">전체 태그</option>
-            {allTags.map((tag) => (
-              <option key={tag} value={tag}>
-                {tag}
-              </option>
-            ))}
-          </select>
+            <select value={filterTag} onChange={(event) => setFilterTag(event.target.value)} className="select-soft max-w-[12rem]">
+              <option value="">전체 태그</option>
+              {allTags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-          <div className="ml-auto text-sm text-slate-500">{filteredProjects.length}개 프로젝트</div>
+        <div className="page-toolbar-row">
+          <span className="page-toolbar-note">
+            부서와 태그 필터를 결합해도 동일한 시각 스타일로 비교되도록 정리했습니다.
+          </span>
+          <span className="page-toolbar-note">총 {filteredProjects.length}개 프로젝트</span>
         </div>
       </section>
 
@@ -194,14 +211,14 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
       ) : null}
 
       {viewMode === 'grid' ? (
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {filteredProjects.map((project) => (
             <article
               key={project.id}
               onClick={() => onProjectClick(project.id)}
-              className="group cursor-pointer overflow-hidden rounded-2xl border border-slate-200/85 bg-white/96 shadow-[0_8px_18px_rgba(17,37,56,0.08)] transition-[box-shadow,border-color] duration-200 hover:border-slate-300 hover:shadow-[0_14px_24px_rgba(14,33,51,0.12)]"
+              className="group cursor-pointer overflow-hidden rounded-[24px] border border-slate-200/85 bg-white/96 shadow-[0_12px_26px_rgba(17,37,56,0.08)] transition-[box-shadow,border-color,transform] duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_18px_32px_rgba(14,33,51,0.12)]"
             >
-              <div className="relative h-36 bg-gradient-to-br from-slate-600 to-slate-700">
+              <div className="relative h-36 bg-gradient-to-br from-slate-600 to-slate-800">
                 {project.imageUrl ? (
                   <img src={project.imageUrl} alt={project.title} className="h-full w-full object-cover" />
                 ) : (
@@ -210,26 +227,26 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
                   </div>
                 )}
                 {project.badge ? (
-                  <span className="absolute right-2 top-2 rounded-full border border-slate-200 bg-white/95 px-2 py-0.5 text-xs font-medium text-slate-700">
+                  <span className="absolute right-3 top-3 rounded-full border border-slate-200 bg-white/95 px-2 py-0.5 text-xs font-medium text-slate-700">
                     {project.badge}
                   </span>
                 ) : null}
               </div>
 
-              <div className="p-4">
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <h3 className="line-clamp-2 font-medium text-slate-900">{project.title}</h3>
+              <div className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="line-clamp-2 text-base font-semibold text-slate-900">{project.title}</h3>
                   {renderTrendBadge(project.trend)}
                 </div>
-                <p className="mb-3 line-clamp-2 text-sm text-slate-500">{project.description}</p>
-                <div className="mb-3 flex flex-wrap gap-1">
+                <p className="line-clamp-2 text-sm text-slate-500">{project.description}</p>
+                <div className="flex flex-wrap gap-1.5">
                   {project.tags.slice(0, 2).map((tag) => (
-                    <span key={tag} className="rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                    <span key={tag} className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-xs text-slate-700">
                       {tag}
                     </span>
                   ))}
                   {project.tags.length > 2 ? (
-                    <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600">
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600">
                       +{project.tags.length - 2}
                     </span>
                   ) : null}
@@ -248,26 +265,26 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
       ) : null}
 
       {viewMode === 'list' ? (
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white/96">
+        <section className="page-panel overflow-hidden p-0">
           {filteredProjects.map((project, index) => (
             <article
               key={project.id}
               onClick={() => onProjectClick(project.id)}
-              className="flex cursor-pointer items-center gap-4 border-b border-slate-200 p-4 transition-colors last:border-b-0 hover:bg-slate-50"
+              className="flex cursor-pointer items-center gap-4 border-b border-slate-200/80 px-4 py-4 transition-colors last:border-b-0 hover:bg-slate-50/70"
             >
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-[#4f7394]">
-                <span className="text-lg font-bold text-white">{index + 1}</span>
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-[#4f7394] text-base font-bold text-white">
+                {index + 1}
               </div>
-              <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100">
+              <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-100">
                 {project.imageUrl ? (
-                  <img src={project.imageUrl} alt="" className="h-full w-full rounded-lg object-cover" />
+                  <img src={project.imageUrl} alt="" className="h-full w-full rounded-2xl object-cover" />
                 ) : (
                   <Image className="h-6 w-6 text-slate-400" />
                 )}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center gap-2">
-                  <h3 className="truncate font-medium text-slate-900">{project.title}</h3>
+                  <h3 className="truncate font-semibold text-slate-900">{project.title}</h3>
                   {project.badge ? (
                     <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
                       {project.badge}
@@ -276,19 +293,18 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
                   {renderTrendBadge(project.trend)}
                 </div>
                 <p className="truncate text-sm text-slate-500">{project.description}</p>
-                <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <span>{project.department}</span>
-                  <span>&middot;</span>
                   <span>{project.author}</span>
                   {project.tags.slice(0, 2).map((tag) => (
-                    <span key={tag} className="rounded border border-slate-200 bg-white px-2 py-0.5">
+                    <span key={tag} className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
                       {tag}
                     </span>
                   ))}
                 </div>
               </div>
-              <div className="text-right">
-                <div className="mb-1 flex items-center gap-3 text-sm text-slate-500">
+              <div className="text-right text-sm text-slate-500">
+                <div className="mb-1 flex items-center gap-3">
                   <span>스타 {project.stars}</span>
                   <span>조회 {project.views}</span>
                   <span>댓글 {project.comments}</span>
@@ -301,28 +317,28 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
       ) : null}
 
       {viewMode === 'card' ? (
-        <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <section className="page-card-grid">
           {filteredProjects.map((project) => (
             <article
               key={project.id}
               onClick={() => onProjectClick(project.id)}
-              className="group cursor-pointer rounded-2xl border border-slate-200/85 bg-white/96 p-6 shadow-[0_8px_18px_rgba(17,37,56,0.08)] transition-[box-shadow,border-color] duration-200 hover:border-slate-300 hover:shadow-[0_14px_24px_rgba(14,33,51,0.12)]"
+              className="group cursor-pointer rounded-[26px] border border-slate-200/85 bg-white/96 p-6 shadow-[0_12px_26px_rgba(17,37,56,0.08)] transition-[box-shadow,border-color,transform] duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_18px_32px_rgba(14,33,51,0.12)]"
             >
               <div className="mb-4 flex items-start gap-4">
-                <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-slate-600 to-slate-700">
+                <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-[22px] bg-gradient-to-br from-slate-600 to-slate-800">
                   {project.imageUrl ? (
-                    <img src={project.imageUrl} alt="" className="h-full w-full rounded-lg object-cover" />
+                    <img src={project.imageUrl} alt="" className="h-full w-full rounded-[22px] object-cover" />
                   ) : (
                     <Image className="h-8 w-8 text-white/50" />
                   )}
                 </div>
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <div className="mb-1 flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-slate-900">{project.title}</h3>
+                    <h3 className="line-clamp-2 font-semibold text-slate-900">{project.title}</h3>
                     {renderTrendBadge(project.trend)}
                   </div>
                   <p className="text-sm text-slate-500">
-                    {project.department} &middot; {project.author}
+                    {project.department} · {project.author}
                   </p>
                 </div>
               </div>
@@ -337,8 +353,8 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
                 ))}
               </div>
 
-              <div className="flex items-center justify-between border-t border-slate-200 pt-4">
-                <div className="flex items-center gap-4 text-sm text-slate-500">
+              <div className="flex items-center justify-between border-t border-slate-200/80 pt-4 text-sm text-slate-500">
+                <div className="flex flex-wrap items-center gap-4">
                   <span>스타 {project.stars}</span>
                   <span>포크 {project.forks}</span>
                   <span>조회 {project.views}</span>
@@ -352,14 +368,14 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
       ) : null}
 
       {viewMode === 'compact' ? (
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {filteredProjects.map((project) => (
             <article
               key={project.id}
               onClick={() => onProjectClick(project.id)}
-              className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 transition-[box-shadow,border-color] hover:border-slate-300 hover:shadow-sm"
+              className="cursor-pointer rounded-[20px] border border-slate-200 bg-white/94 p-3 transition-[box-shadow,border-color] hover:border-slate-300 hover:shadow-sm"
             >
-              <h4 className="mb-1 line-clamp-2 text-sm font-medium text-slate-900">{project.title}</h4>
+              <h4 className="mb-1 line-clamp-2 text-sm font-semibold text-slate-900">{project.title}</h4>
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="truncate">{project.department}</span>
                 <span>스타 {project.stars}</span>

@@ -504,7 +504,7 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.12),transparent_24%),linear-gradient(180deg,#f8fbff_0%,#eff4fb_42%,#f4f7fb_100%)] text-slate-900">
       <PlatformFrame
-        brandMark="ADM"
+        brandMark={<img src="/Logo.png" alt="" className="platform-brand-image" />}
         brandEyebrow="운영"
         brandTitle="JB Hub Admin"
         brandDescription="서비스 상태, 프로젝트 운영, 계정, 백업까지 한곳에서 다루는 관리자 콘솔입니다."
