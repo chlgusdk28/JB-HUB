@@ -10,9 +10,11 @@ export function CategoryFilterButton({ label, count, isActive, onClick }: Catego
     <button
       type="button"
       onClick={onClick}
-      className={`chip-filter ${isActive ? 'chip-filter-active' : 'chip-filter-idle'}`}
+      className={`category-filter-button chip-filter ${isActive ? 'chip-filter-active' : 'chip-filter-idle'}`}
+      aria-pressed={isActive}
     >
-      {label} ({count})
+      <span className="category-filter-label">{label}</span>
+      <span className={`category-filter-count ${isActive ? 'category-filter-count-active' : ''}`}>{count}</span>
     </button>
   )
 }

@@ -24,18 +24,17 @@ export function NavigationMenuItem<TId extends string = string>({
       className={`nav-item-base ${variant === 'mobile' ? mobileClass : desktopClass} ${lockClass}`.trim()}
       title={item.locked ? item.lockHint ?? '상위 모드에서 사용 가능합니다.' : undefined}
     >
+      <span className={`nav-item-accent ${isActive ? 'nav-item-accent-active' : ''}`} aria-hidden="true" />
       <div className="nav-item-row">
         <div className="nav-item-start">
           {item.icon ? <span className={`nav-item-icon ${isActive ? 'nav-item-icon-active' : ''}`}>{item.icon}</span> : null}
-          <span>{item.label}</span>
+          <span className="nav-item-label">{item.label}</span>
         </div>
 
         {item.locked ? (
           <span className="nav-item-lock-badge">잠금</span>
         ) : item.badge !== undefined && item.badge > 0 ? (
-          <span className={isActive ? 'nav-item-badge-active' : 'nav-item-badge-idle'}>
-            {item.badge}
-          </span>
+          <span className={isActive ? 'nav-item-badge-active' : 'nav-item-badge-idle'}>{item.badge}</span>
         ) : null}
       </div>
     </button>
