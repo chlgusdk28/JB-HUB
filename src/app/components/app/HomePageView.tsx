@@ -117,8 +117,8 @@ function HomePageViewBase({
         <div className="hero-panel">
           <div className="floating-orb-hero-right" />
           <div className="floating-orb-hero-left" />
-          <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl space-y-4">
+          <div className="relative z-10 hero-panel-grid">
+            <div className="hero-panel-copy">
               <p className="inline-flex items-center gap-2 rounded-full border border-white/45 bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-50">
                 {eyebrow}
               </p>
@@ -128,7 +128,17 @@ function HomePageViewBase({
               </h1>
               <p className="text-sm text-slate-100 sm:text-base">{homeDescription}</p>
             </div>
-            <div className="action-row">
+            <div className="hero-spotlight-card">
+              <div className="hero-spotlight-grid">
+                {summaryMetrics.slice(0, 4).map((metric) => (
+                  <div key={`hero-${metric.key}`} className="hero-spotlight-item">
+                    <span className="hero-spotlight-label">{metric.label}</span>
+                    <strong className="hero-spotlight-value">{metric.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="action-row hero-panel-actions">
               <OpalButton variant="secondary" size="sm" icon={<Download className="h-4 w-4" />} onClick={onExportFavorites}>
                 즐겨찾기 내보내기
               </OpalButton>
@@ -148,7 +158,7 @@ function HomePageViewBase({
         </div>
       </header>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="home-metric-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {summaryMetrics.map((metric) => (
           <MetricCard
             key={metric.key}

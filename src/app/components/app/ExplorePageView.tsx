@@ -102,16 +102,36 @@ function ExplorePageViewBase({
   const exploreDescription = readSiteContentValue(
     siteContent,
     'explore.description',
-    '카테고리, 부서, 즐겨찾기, 신규 여부, 최소 스타 조건을 조합해 필요한 프로젝트를 정확하게 찾으세요.',
+    '카테고리, 부서, 즐겨찾기, 신규 여부, 최소 스타 조건을 조합해 필요한 프로젝트를 빠르게 찾으세요.',
   )
 
   return (
     <div className="page-shell">
-      <header className="page-header-plain space-y-4">
-        <div className="fade-up flex flex-col gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{exploreTitle}</h1>
-          <p className="max-w-2xl text-sm text-slate-600">{exploreDescription}</p>
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">현재 적용 중인 필터 {activeFilterCount}개</p>
+      <header className="page-header-plain explore-stage space-y-4">
+        <div className="explore-intro-grid">
+          <div className="fade-up flex flex-col gap-3">
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{exploreTitle}</h1>
+            <p className="max-w-2xl text-sm text-slate-600">{exploreDescription}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">
+              현재 적용 중인 필터 {activeFilterCount}개
+            </p>
+          </div>
+          <div className="explore-summary-card fade-up">
+            <div className="explore-summary-grid">
+              <div className="explore-summary-item">
+                <span className="explore-summary-label">Results</span>
+                <strong className="explore-summary-value">{visibleProjects.length}</strong>
+              </div>
+              <div className="explore-summary-item">
+                <span className="explore-summary-label">Filters</span>
+                <strong className="explore-summary-value">{activeFilterCount}</strong>
+              </div>
+              <div className="explore-summary-item">
+                <span className="explore-summary-label">Stars</span>
+                <strong className="explore-summary-value">{Math.max(0, minStars)}</strong>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="filter-panel">
@@ -155,7 +175,7 @@ function ExplorePageViewBase({
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-white/80 bg-white/72 p-3 backdrop-blur-sm">
+          <div className="explore-active-filter-shell mt-4">
             {activeFilterChips.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {activeFilterChips.map((chip) => (
@@ -176,12 +196,14 @@ function ExplorePageViewBase({
                 </button>
               </div>
             ) : (
-              <p className="text-xs text-slate-500">적용된 필터가 없습니다. 카테고리나 조건을 선택해 탐색 범위를 좁혀보세요.</p>
+              <p className="text-xs text-slate-500">
+                적용 중인 필터가 없습니다. 카테고리와 정렬 조건을 조합해서 탐색 범위를 좁혀보세요.
+              </p>
             )}
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <div className="xl:col-span-2">
+          <div className="explore-filter-grid">
+            <div className="explore-category-panel">
               <div className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">카테고리</div>
               <div className="flex flex-wrap gap-2">
                 {categoryDefinitions.map((category) => (
@@ -196,7 +218,7 @@ function ExplorePageViewBase({
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="explore-refine-panel">
               <label htmlFor="sort-projects" className="field-label">
                 정렬
               </label>
@@ -265,13 +287,13 @@ function ExplorePageViewBase({
         </div>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <section className="explore-results-grid">
         {visibleProjects.map((project, index) => renderProjectCard(project, undefined, index))}
         {visibleProjects.length === 0 ? (
           <div className="empty-panel">
             <p className="mb-3">현재 필터 조건에 맞는 프로젝트가 없습니다.</p>
             <p className="mb-4 text-xs text-slate-500">
-              검색어를 줄이거나 카테고리, 최소 스타, 부서 조건을 완화해 다시 탐색해 보세요.
+              검색어를 줄이거나 카테고리, 최소 스타, 부서 조건을 완화해서 다시 탐색해 보세요.
             </p>
             <OpalButton variant="secondary" size="sm" icon={<RotateCcw className="h-4 w-4" />} onClick={onResetFilters}>
               필터 초기화

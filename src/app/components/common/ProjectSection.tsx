@@ -25,16 +25,17 @@ export function ProjectSection({
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-slate-900">
-          {icon}
-          <h2 className="text-xl font-bold tracking-tight sm:text-2xl">{title}</h2>
+    <section className="project-section-shell">
+      <div className="project-section-head">
+        <div className="project-section-title-row">
+          {icon ? <span className="project-section-icon">{icon}</span> : <span className="project-section-dot" aria-hidden="true" />}
+          <h2 className="project-section-title">{title}</h2>
         </div>
         {rightSlot}
       </div>
+      <div className="project-section-divider" aria-hidden="true" />
 
-      <div className={gridClassName}>
+      <div className={`project-section-grid ${gridClassName}`}>
         {projects.map((project, index) => renderProjectCard(project, index))}
       </div>
     </section>
