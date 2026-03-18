@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(docker:*)",
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Bash(timeout:*)",
+      "Bash(command:*)",
+      "Bash(sudo apt:*)",
+      "Bash(mkdir:*)",
+      "Bash(cd:*)",
+      "Bash(npm install:*)",
+      "Bash(chmod:*)",
+      "Bash(tar czf:*)"
+    ]
+  }
+}

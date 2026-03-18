@@ -1,0 +1,4 @@
+services:
+  mysql:
+    volumes:
+      - ./mysql_jbhub.sql:/docker-entrypoint-initdb.d/001-jbhub.sql:ro

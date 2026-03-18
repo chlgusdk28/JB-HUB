@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.github
+.runtime
+backup
+artifacts
+docker-temp
+docker-uploads
+project-files
+npm-debug.log*
+.env
