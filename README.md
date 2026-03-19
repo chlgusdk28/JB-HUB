@@ -273,6 +273,10 @@ npm run dev:mock
 | `npm run docker:down` | 로컬 MySQL/Adminer 종료 |
 | `npm run docker:logs` | MySQL 로그 확인 |
 | `npm run docker:reset` | 로컬 DB 볼륨 초기화 |
+| `npm run docker:local -- <version>` | 버전 태그를 지정해 로컬 전체 앱 스택 빌드/실행 |
+| `npm run docker:local:down` | 로컬 전체 앱 스택 종료 |
+| `npm run docker:local:logs` | 로컬 전체 앱 스택 로그 확인 |
+| `npm run docker:local:ps` | 로컬 전체 앱 스택 상태 확인 |
 | `npm run docker:bundle` | 업로드용 프런트/백엔드 Docker 번들 생성 |
 | `npm run docker:bundle:airgap` | JB-Hub 전체 스택 air-gap 번들 생성 |
 | `npm run docker:bundle:airgap:tar` | air-gap 번들을 tar 형식으로 생성 |
@@ -438,6 +442,55 @@ npm run docker:reset
 ```
 
 `docker:reset`은 volume까지 함께 정리합니다.
+
+### 14.3 로컬 전체 앱 스택 실행
+
+파일을 여러 개 추가하지 않고, 기존 `Dockerfile.web`, `Dockerfile.api`, `docker-compose.airgap.yml`만 재사용하는 단순한 방식입니다.
+
+```bash
+npm run docker:local -- 1.0.0
+```
+
+이 명령은 아래를 한 번에 처리합니다.
+
+- `jbhub-web:1.0.0` 이미지 빌드
+- `jbhub-api:1.0.0` 이미지 빌드
+- 로컬 compose 스택 실행
+
+기본 포트:
+
+- Web: `8080`
+- API: `8788`
+- MySQL: `3311`
+
+Adminer까지 함께 띄우려면:
+
+```bash
+npm run docker:local -- 1.0.0 --ops
+```
+
+JB-Hub 내부 Docker 기능까지 같이 테스트하려면:
+
+```bash
+npm run docker:local -- 1.0.0 --docker
+```
+
+추가 포트:
+
+- Adminer: `8082`
+
+정리 명령:
+
+```bash
+npm run docker:local:down
+npm run docker:local:down -- --volumes
+```
+
+참고:
+
+- 기존 `docker-compose.yml`은 개발용 DB 전용입니다.
+- 로컬 실행용 env는 `.runtime/docker-local-stack.env`로 자동 생성됩니다.
+- `docker:local`은 버전 문자열만 입력하면 되도록 단순화한 진입점입니다.
 
 ## 15. Docker 번들 기능
 

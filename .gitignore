@@ -35,6 +35,7 @@ artifacts/
 backup/
 final/
 final2/
+final-*/
 data/*.db
 data/*.db-shm
 data/*.db-wal

@@ -16,13 +16,17 @@ Options:
   --package-name <name>   Final archive name (default: jbhub-airgap-package.tar.gz)
   --db-container <name>   Running MySQL container to dump (default: jbhub-mysql)
   --db-dump-name <name>   SQL dump filename in the package (default: mysql_jbhub.sql)
+  --image-archive-format <value>
+                         Image archive format: tar.gz or tar (default: tar.gz)
+  --package-format <value>
+                         Final package format: tar.gz or tar (default: tar.gz)
+  --minimal               Package only the image archive and a single docker-compose.yml
   --skip-db-dump          Build the package without exporting the current database
   --refresh-bundle        Rebuild the source air-gap bundle before packaging
   --help                  Show this help
 `.trim()
 
-const REQUIRED_BUNDLE_FILES = [
-  'images.tar.gz',
+const STATIC_REQUIRED_BUNDLE_FILES = [
   'docker-compose.airgap.yml',
   'docker-compose.airgap.docker-features.yml',
   'docker-compose.airgap.restore.yml',
@@ -43,6 +47,28 @@ function takeValue(args, index, flagName) {
   return value
 }
 
+function isSupportedArchiveFormat(value) {
+  return value === 'tar.gz' || value === 'tar'
+}
+
+function resolveImageArchiveName(format) {
+  return format === 'tar' ? 'images.tar' : 'images.tar.gz'
+}
+
+function normalizePackageName(name, format) {
+  const normalized = String(name || '').trim() || (format === 'tar' ? 'jbhub-airgap-package.tar' : 'jbhub-airgap-package.tar.gz')
+
+  if (format === 'tar') {
+    return normalized.endsWith('.tar') ? normalized : `${normalized.replace(/\.tar\.gz$/u, '').replace(/\.gz$/u, '')}.tar`
+  }
+
+  return normalized.endsWith('.tar.gz') ? normalized : `${normalized.replace(/\.tar$/u, '')}.tar.gz`
+}
+
+function getRequiredBundleFiles(imageArchiveFormat) {
+  return [resolveImageArchiveName(imageArchiveFormat), ...STATIC_REQUIRED_BUNDLE_FILES]
+}
+
 function parseCliArgs(argv) {
   const options = {
     bundleDir: path.join('.runtime', 'airgap-bundle-final'),
@@ -50,6 +76,9 @@ function parseCliArgs(argv) {
     packageName: 'jbhub-airgap-package.tar.gz',
     dbContainer: 'jbhub-mysql',
     dbDumpName: 'mysql_jbhub.sql',
+    imageArchiveFormat: 'tar.gz',
+    packageFormat: 'tar.gz',
+    minimal: false,
     skipDbDump: false,
     refreshBundle: false,
   }
@@ -81,6 +110,17 @@ function parseCliArgs(argv) {
         options.dbDumpName = takeValue(argv, index, argument)
         index += 1
         break
+      case '--image-archive-format':
+        options.imageArchiveFormat = takeValue(argv, index, argument)
+        index += 1
+        break
+      case '--package-format':
+        options.packageFormat = takeValue(argv, index, argument)
+        index += 1
+        break
+      case '--minimal':
+        options.minimal = true
+        break
       case '--skip-db-dump':
         options.skipDbDump = true
         break
@@ -92,9 +132,19 @@ function parseCliArgs(argv) {
     }
   }
 
-  if (!options.packageName.endsWith('.tar.gz')) {
-    options.packageName = `${options.packageName}.tar.gz`
+  if (!isSupportedArchiveFormat(options.imageArchiveFormat)) {
+    fail(`Unsupported image archive format: ${options.imageArchiveFormat}`)
   }
+
+  if (!isSupportedArchiveFormat(options.packageFormat)) {
+    fail(`Unsupported package format: ${options.packageFormat}`)
+  }
+
+  if (options.minimal && !options.skipDbDump) {
+    fail('`--minimal` requires `--skip-db-dump` because the restore override is omitted in minimal mode.')
+  }
+
+  options.packageName = normalizePackageName(options.packageName, options.packageFormat)
 
   return options
 }
@@ -178,8 +228,8 @@ async function fileExists(filePath) {
   }
 }
 
-async function directoryContainsRequiredFiles(directoryPath) {
-  for (const fileName of REQUIRED_BUNDLE_FILES) {
+async function directoryContainsRequiredFiles(directoryPath, imageArchiveFormat) {
+  for (const fileName of getRequiredBundleFiles(imageArchiveFormat)) {
     if (!(await fileExists(path.join(directoryPath, fileName)))) {
       return false
     }
@@ -188,14 +238,26 @@ async function directoryContainsRequiredFiles(directoryPath) {
   return true
 }
 
-async function ensureBundleReady(bundleDir, refreshBundle) {
-  const hasBundle = await directoryContainsRequiredFiles(bundleDir)
+async function ensureBundleReady(bundleDir, refreshBundle, imageArchiveFormat) {
+  const hasBundle = await directoryContainsRequiredFiles(bundleDir, imageArchiveFormat)
   if (hasBundle && !refreshBundle) {
     return
   }
 
   await fs.promises.mkdir(bundleDir, { recursive: true })
-  await runCommand('node', ['scripts/build-airgap-stack-bundle.mjs', '--output-dir', bundleDir])
+  const buildArgs = [
+    'scripts/build-airgap-stack-bundle.mjs',
+    '--output-dir',
+    bundleDir,
+    '--image-archive-format',
+    imageArchiveFormat,
+  ]
+
+  if (refreshBundle?.skipAdminer) {
+    buildArgs.push('--skip-adminer')
+  }
+
+  await runCommand('node', buildArgs)
 }
 
 function parseEnvLines(text) {
@@ -212,6 +274,11 @@ function parseEnvLines(text) {
   }
 
   return result
+}
+
+async function loadBundleEnvMap(bundleDir) {
+  const envText = await fs.promises.readFile(path.join(bundleDir, '.env.bundle'), 'utf8')
+  return parseEnvLines(envText)
 }
 
 async function inspectMySqlContainer(containerName) {
@@ -268,7 +335,7 @@ async function exportDatabaseDump({ containerName, dumpPath }) {
   )
 }
 
-function buildImportGuide({ archiveName, dbDumpName, includeDbDump }) {
+function buildImportGuide({ archiveName, dbDumpName, includeDbDump, imageArchiveName }) {
   const restoreSection = includeDbDump
     ? `4. To bootstrap the current DB snapshot on the first startup of a new MySQL volume:
    - \`docker compose --env-file .env -f docker-compose.airgap.yml -f docker-compose.airgap.restore.yml up -d\`
@@ -291,7 +358,7 @@ This directory is the final handoff set for an offline Docker host.
 
 ## Files
 
-- \`images.tar.gz\`: Docker image archive for web, api, mysql, adminer
+- \`${imageArchiveName}\`: Docker image archive for web, api, mysql, adminer
 - \`docker-compose.airgap.yml\`: base stack definition
 - \`docker-compose.airgap.docker-features.yml\`: optional Docker socket override
 - \`docker-compose.airgap.restore.yml\`: optional first-boot DB restore override
@@ -302,7 +369,7 @@ ${includeDbDump ? `- \`${dbDumpName}\`: SQL dump of the current JB-Hub database\
 
 1. Extract \`${archiveName}\`.
 2. Load images:
-   - \`docker load -i images.tar.gz\`
+   - \`docker load -i ${imageArchiveName}\`
 3. Copy \`.env.bundle\` to \`.env\` and replace all default passwords and secrets.
 ${restoreSection}
 Default endpoints after startup:
@@ -314,10 +381,110 @@ Default endpoints after startup:
 `
 }
 
-async function copyRequiredFiles(bundleDir, outputDir) {
-  for (const fileName of REQUIRED_BUNDLE_FILES) {
+async function copyRequiredFiles(bundleDir, outputDir, imageArchiveFormat) {
+  for (const fileName of getRequiredBundleFiles(imageArchiveFormat)) {
     await fs.promises.copyFile(path.join(bundleDir, fileName), path.join(outputDir, fileName))
   }
+}
+
+function buildMinimalComposeText(bundleEnv) {
+  const webImage = bundleEnv.get('JBHUB_WEB_IMAGE') || 'jbhub-web:airgap'
+  const apiImage = bundleEnv.get('JBHUB_API_IMAGE') || 'jbhub-api:airgap'
+  const mysqlImage = bundleEnv.get('JBHUB_MYSQL_IMAGE') || 'mysql:8.4'
+
+  return `services:
+  mysql:
+    image: ${mysqlImage}
+    container_name: jbhub-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: jbhub-root-password-2026
+      MYSQL_DATABASE: jbhub
+      MYSQL_USER: jbhub
+      MYSQL_PASSWORD: jbhub-app-password-2026
+      TZ: Asia/Seoul
+    ports:
+      - "3310:3306"
+    volumes:
+      - jbhub_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  api:
+    image: ${apiImage}
+    container_name: jbhub-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      API_PORT: 8787
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: jbhub
+      DB_PASSWORD: jbhub-app-password-2026
+      DB_NAME: jbhub
+      DB_CONN_LIMIT: 10
+      DB_SEED: false
+      DB_CONNECT_RETRY_ATTEMPTS: 40
+      DB_CONNECT_RETRY_DELAY_MS: 2000
+      APP_PRODUCT_MODE: signup
+      API_RATE_LIMIT_WINDOW_MS: 60000
+      API_RATE_LIMIT_MAX_REQUESTS: 240
+      API_JWT_HS256_SECRET: jbhub-airgap-jwt-secret-2026-keep-private
+      API_JWT_ISSUER: jbhub-api
+      API_JWT_AUDIENCE: jbhub-client
+      JWT_ACCESS_TOKEN_EXPIRATION: 86400
+      JWT_REFRESH_TOKEN_EXPIRATION: 604800
+      ADMIN_DEFAULT_USERNAME: jbhub-admin
+      ADMIN_DEFAULT_PASSWORD: jbhub-admin-password-2026
+      ADMIN_DEFAULT_EMAIL: admin@jbhub.local
+      ADMIN_SESSION_TIMEOUT_MS: 3600000
+      ADMIN_MAX_LOGIN_ATTEMPTS: 5
+      ADMIN_LOCKOUT_DURATION_MS: 900000
+      AUTH_STATE_CLEANUP_INTERVAL_MS: 300000
+      AUDIT_LOG_ENABLED: true
+      AUDIT_LOG_RETENTION_DAYS: 90
+      CORS_ALLOWED_ORIGINS:
+      TZ: Asia/Seoul
+    ports:
+      - "8787:8787"
+    volumes:
+      - jbhub_project_files:/app/project-files
+      - jbhub_docker_uploads:/app/docker-uploads
+      - jbhub_docker_temp:/app/docker-temp
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/v1/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  web:
+    image: ${webImage}
+    container_name: jbhub-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  jbhub_mysql_data:
+  jbhub_project_files:
+  jbhub_docker_uploads:
+  jbhub_docker_temp:
+`
 }
 
 async function main() {
@@ -332,42 +499,55 @@ async function main() {
   const outputDir = path.resolve(process.cwd(), options.outputDir)
   const dumpPath = path.join(outputDir, options.dbDumpName)
   const archivePath = path.join(outputDir, options.packageName)
+  const imageArchiveName = resolveImageArchiveName(options.imageArchiveFormat)
+  const ensureBundleOptions = {
+    skipAdminer: options.minimal,
+  }
 
-  await ensureBundleReady(bundleDir, options.refreshBundle)
+  await ensureBundleReady(bundleDir, options.refreshBundle || ensureBundleOptions.skipAdminer ? ensureBundleOptions : false, options.imageArchiveFormat)
 
-  if (!(await directoryContainsRequiredFiles(bundleDir))) {
+  if (!(await directoryContainsRequiredFiles(bundleDir, options.imageArchiveFormat))) {
     fail(`Bundle directory is incomplete: ${bundleDir}`)
   }
 
   await fs.promises.rm(outputDir, { recursive: true, force: true })
   await fs.promises.mkdir(outputDir, { recursive: true })
 
-  await copyRequiredFiles(bundleDir, outputDir)
+  let packageEntries = []
+
+  if (options.minimal) {
+    await fs.promises.copyFile(path.join(bundleDir, imageArchiveName), path.join(outputDir, imageArchiveName))
+    const bundleEnv = await loadBundleEnvMap(bundleDir)
+    await fs.promises.writeFile(path.join(outputDir, 'docker-compose.yml'), buildMinimalComposeText(bundleEnv), 'utf8')
+    packageEntries = [imageArchiveName, 'docker-compose.yml']
+  } else {
+    await copyRequiredFiles(bundleDir, outputDir, options.imageArchiveFormat)
+    packageEntries = [...getRequiredBundleFiles(options.imageArchiveFormat)]
+  }
 
   if (!options.skipDbDump) {
     await exportDatabaseDump({
       containerName: options.dbContainer,
       dumpPath,
     })
-  }
-
-  const packageEntries = [...REQUIRED_BUNDLE_FILES]
-  if (!options.skipDbDump) {
     packageEntries.push(options.dbDumpName)
   }
 
-  await fs.promises.writeFile(
-    path.join(outputDir, 'IMPORT.md'),
-    buildImportGuide({
-      archiveName: options.packageName,
-      dbDumpName: options.dbDumpName,
-      includeDbDump: !options.skipDbDump,
-    }),
-    'utf8',
-  )
-  packageEntries.push('IMPORT.md')
+  if (!options.minimal) {
+    await fs.promises.writeFile(
+      path.join(outputDir, 'IMPORT.md'),
+      buildImportGuide({
+        archiveName: options.packageName,
+        dbDumpName: options.dbDumpName,
+        includeDbDump: !options.skipDbDump,
+        imageArchiveName,
+      }),
+      'utf8',
+    )
+    packageEntries.push('IMPORT.md')
+  }
 
-  await runCommand('tar', ['-czf', options.packageName, ...packageEntries], {
+  await runCommand('tar', [options.packageFormat === 'tar' ? '-cf' : '-czf', options.packageName, ...packageEntries], {
     cwd: outputDir,
   })
 
