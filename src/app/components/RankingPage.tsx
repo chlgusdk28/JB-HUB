@@ -2,10 +2,10 @@
 import { Building2, Eye, GitFork, Search, Star, Trophy, UserRound } from 'lucide-react'
 import type { Project } from '../lib/project-utils'
 import { fetchRankings, type ProjectRankings } from '../lib/projects-api'
-import { PageHeader, PageShell, Pill } from './common'
+import { MetricCard, PageHeader, PageShell, Pill } from './common'
 import { OpalCard } from './opal/OpalCard'
 import { OpalTag } from './opal/OpalTag'
-import { TableSkeleton, MetricCardSkeleton } from './Skeleton'
+import { TableSkeleton } from './Skeleton'
 
 interface RankingPageProps {
   projects: Project[]
@@ -233,6 +233,12 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
   const currentCount = activeTab === 'projects' ? visibleProjects.length : activeTab === 'contributors' ? visibleContributors.length : visibleDepartments.length
   const totalCount = activeTab === 'projects' ? filteredProjects.length : activeTab === 'contributors' ? filteredContributors.length : filteredDepartments.length
   const activeTabLabel = activeTab === 'projects' ? '프로젝트' : activeTab === 'contributors' ? '기여자' : '부서'
+  const summaryMetrics = [
+    { key: 'projects', label: '프로젝트 랭킹', value: displayedProjects.length },
+    { key: 'contributors', label: '기여자 랭킹', value: displayedContributors.length },
+    { key: 'departments', label: '부서 랭킹', value: displayedDepartments.length },
+    { key: 'results', label: '현재 결과', value: `${currentCount}/${totalCount}` },
+  ]
 
   return (
     <PageShell>
@@ -254,36 +260,48 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
         }
       />
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('contributors')}
-          className={`glass-inline-button ${activeTab === 'contributors' ? 'bg-white text-slate-900' : ''}`}
-        >
-          <UserRound className="h-4 w-4" />
-          기여자
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('projects')}
-          className={`glass-inline-button ${activeTab === 'projects' ? 'bg-white text-slate-900' : ''}`}
-        >
-          <Trophy className="h-4 w-4" />
-          프로젝트
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('departments')}
-          className={`glass-inline-button ${activeTab === 'departments' ? 'bg-white text-slate-900' : ''}`}
-        >
-          <Building2 className="h-4 w-4" />
-          부서
-        </button>
-      </div>
+      <section className="page-metric-grid">
+        {summaryMetrics.map((metric) => (
+          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
+        ))}
+      </section>
 
-      <section className="surface-panel rounded-2xl p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative w-full lg:max-w-md">
+      <section className="page-toolbar-panel page-toolbar-stack">
+        <div className="page-toolbar-row">
+          <div className="page-toggle-cluster">
+            <button
+              type="button"
+              onClick={() => setActiveTab('contributors')}
+              className={`page-toggle-button ${
+                activeTab === 'contributors' ? 'page-toggle-button-active' : 'page-toggle-button-idle'
+              }`}
+            >
+              <UserRound className="h-4 w-4" />
+              기여자
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('projects')}
+              className={`page-toggle-button ${
+                activeTab === 'projects' ? 'page-toggle-button-active' : 'page-toggle-button-idle'
+              }`}
+            >
+              <Trophy className="h-4 w-4" />
+              프로젝트
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('departments')}
+              className={`page-toggle-button ${
+                activeTab === 'departments' ? 'page-toggle-button-active' : 'page-toggle-button-idle'
+              }`}
+            >
+              <Building2 className="h-4 w-4" />
+              부서
+            </button>
+          </div>
+
+          <div className="page-input-shell">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={keyword}
@@ -298,8 +316,10 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
               className="w-full rounded-xl border border-slate-300 bg-white/90 py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:border-slate-500 focus:ring-2"
             />
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="page-toolbar-row">
+          <div className="page-toolbar-cluster">
             {RANKING_LIMIT_OPTIONS.map((item) => (
               <button
                 key={`ranking-limit-${item}`}
@@ -311,14 +331,12 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
               </button>
             ))}
           </div>
+          <p className="page-toolbar-note">총 {totalCount}개 중 {currentCount}개를 표시합니다.</p>
         </div>
-        <p className="mt-3 text-xs text-slate-500">
-          총 {totalCount}개 중 {currentCount}개를 표시합니다.
-        </p>
       </section>
 
       {activeTab === 'projects' ? (
-        <section className="space-y-4">
+        <section className="page-list-stack">
           {visibleProjects.map((project) => {
             const tags = tagsByProjectId.get(project.id) ?? []
 
@@ -377,7 +395,7 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
       ) : null}
 
       {activeTab === 'contributors' ? (
-        <section className="space-y-4">
+        <section className="page-list-stack">
           {isLoadingRankings ? (
             <>
               <TableSkeleton rows={limit} />
@@ -429,7 +447,7 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
       ) : null}
 
       {activeTab === 'departments' ? (
-        <section className="space-y-4">
+        <section className="page-list-stack">
           {visibleDepartments.map((department) => (
             <OpalCard key={department.name} padding="comfortable" elevation="minimal">
               <div className="flex items-center gap-4">

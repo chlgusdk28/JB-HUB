@@ -10,6 +10,7 @@ import {
   Users,
   UserSquare2,
 } from 'lucide-react'
+import { MetricCard, PageHeader, PageShell, Pill } from './common'
 import { OpalCard } from './opal/OpalCard'
 import { OpalInput } from './opal/OpalInput'
 import { OpalButton } from './opal/OpalButton'
@@ -468,42 +469,34 @@ export function OrgChartPage() {
   }
 
   return (
-    <div className="page-shell">
-      <header className="hero-panel">
-        <div className="floating-orb-hero-right" aria-hidden="true" />
-        <div className="floating-orb-hero-left" aria-hidden="true" />
-        <div className="relative z-10 space-y-4">
-          <p className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/12 px-3 py-1 text-xs font-semibold tracking-[0.08em] text-slate-100/95">
+    <PageShell density="compact">
+      <PageHeader
+        eyebrow={
+          <>
             <Network className="h-3.5 w-3.5" />
             Org Hub
-          </p>
-          <h1 className="text-2xl font-bold text-white sm:text-3xl lg:text-4xl">사내 조직도</h1>
-          <p className="max-w-3xl text-sm text-slate-100/90 sm:text-base">
-            조직 구조, 리더, 인원, 채용 상태를 한 화면에서 확인할 수 있습니다. API 연계 전까지는 샘플 데이터로 동작하며,
-            연계 후에는 실시간 조직 변경 사항을 바로 반영할 수 있도록 설계했습니다.
-          </p>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="knowledge-kpi-card">
-              <p className="knowledge-kpi-label">총 인원</p>
-              <p className="knowledge-kpi-value">{rootNode.memberCount}</p>
-            </div>
-            <div className="knowledge-kpi-card">
-              <p className="knowledge-kpi-label">조직 단위</p>
-              <p className="knowledge-kpi-value">{totalOrganizationCount}</p>
-            </div>
-            <div className="knowledge-kpi-card">
-              <p className="knowledge-kpi-label">채용 포지션</p>
-              <p className="knowledge-kpi-value">{totalLeafOpenRoles}</p>
-            </div>
-            <div className="knowledge-kpi-card">
-              <p className="knowledge-kpi-label">조회 결과</p>
-              <p className="knowledge-kpi-value">{filteredDirectory.length}</p>
-            </div>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+        title="사내 조직도"
+        description="조직 구조, 리더, 인원, 채용 상태를 한 화면에서 확인할 수 있습니다. API 연계 전까지는 샘플 데이터로 동작하며, 연계 후에는 실시간 변경 사항을 반영할 수 있도록 구성했습니다."
+        meta={
+          <>
+            <Pill variant="subtle">조직 구분: {selectedDivision}</Pill>
+            <Pill variant="subtle">보기 방식: {viewMode === 'tree' ? '트리' : '목록'}</Pill>
+            <Pill variant="subtle">조회 결과: {filteredDirectory.length}</Pill>
+            {selectedNode ? <Pill variant="subtle">선택 조직: {selectedNode.name}</Pill> : null}
+          </>
+        }
+      />
 
-      <section className="filter-panel space-y-4">
+      <section className="page-metric-grid">
+        <MetricCard label="총 인원" value={rootNode.memberCount} />
+        <MetricCard label="조직 단위" value={totalOrganizationCount} />
+        <MetricCard label="채용 포지션" value={totalLeafOpenRoles} />
+        <MetricCard label="조회 결과" value={filteredDirectory.length} />
+      </section>
+
+      <section className="page-toolbar-panel page-toolbar-stack">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_14rem_12rem]">
           <OpalInput
             value={query}
@@ -542,23 +535,28 @@ export function OrgChartPage() {
           </label>
         </div>
 
-        <div className="action-row">
-          <button
-            type="button"
-            onClick={() => setOpenRolesOnly((previous) => !previous)}
-            className={`chip-filter ${openRolesOnly ? 'chip-filter-active' : 'chip-filter-idle'}`}
-          >
-            채용 중 조직만
-          </button>
-          <OpalButton size="sm" variant="secondary" onClick={expandAll}>
-            전체 펼치기
-          </OpalButton>
-          <OpalButton size="sm" variant="secondary" onClick={collapseAll}>
-            상위만 보기
-          </OpalButton>
-          <OpalButton size="sm" variant="ghost" onClick={resetFilters}>
-            필터 초기화
-          </OpalButton>
+        <div className="page-toolbar-row">
+          <div className="action-row action-row-scroll">
+            <button
+              type="button"
+              onClick={() => setOpenRolesOnly((previous) => !previous)}
+              className={`chip-filter ${openRolesOnly ? 'chip-filter-active' : 'chip-filter-idle'}`}
+            >
+              채용 중 조직만
+            </button>
+            <OpalButton size="sm" variant="secondary" onClick={expandAll}>
+              전체 펼치기
+            </OpalButton>
+            <OpalButton size="sm" variant="secondary" onClick={collapseAll}>
+              상위만 보기
+            </OpalButton>
+            <OpalButton size="sm" variant="ghost" onClick={resetFilters}>
+              필터 초기화
+            </OpalButton>
+          </div>
+          <span className="page-toolbar-note">
+            선택 조직과 필터 결과를 같은 레이아웃 안에서 비교할 수 있도록 정리했습니다.
+          </span>
         </div>
       </section>
 
@@ -662,6 +660,6 @@ export function OrgChartPage() {
           </OpalCard>
         </div>
       </section>
-    </div>
+    </PageShell>
   )
 }

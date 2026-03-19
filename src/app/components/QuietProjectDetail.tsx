@@ -4,7 +4,7 @@ import type { Project } from '../lib/project-utils'
 import { FilesTab } from './FilesTab'
 import { ProjectDockerTab } from './ProjectDockerTab'
 import { QuietTabs } from './QuietTabs'
-import { MarkdownContent } from './common'
+import { MarkdownContent, MetricCard, PageHeader, PageShell, Pill } from './common'
 import { OpalButton } from './opal/OpalButton'
 import { OpalCard } from './opal/OpalCard'
 import { OpalProjectCard } from './opal/OpalProjectCard'
@@ -193,77 +193,62 @@ export function QuietProjectDetail({
   }
 
   return (
-    <div className="page-shell">
-      <header className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">{project.department}</span>
-          <span>{project.author}</span>
-          <span>·</span>
-          <span>{project.createdAt ?? '최근 업데이트'}</span>
-        </div>
+    <PageShell density="compact">
+      <PageHeader
+        eyebrow={<span>{project.department}</span>}
+        title={project.title}
+        description={`${project.author} · ${project.department} · ${project.createdAt ?? '최근 업데이트'}`}
+        actions={
+          <>
+            <OpalButton
+              variant={isFavorite ? 'primary' : 'secondary'}
+              size="sm"
+              icon={<Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />}
+              onClick={() => onToggleFavorite(project.id)}
+            >
+              {isFavorite ? '즐겨찾기됨' : '즐겨찾기 추가'}
+            </OpalButton>
+            <OpalButton
+              variant="secondary"
+              size="sm"
+              icon={<Download className="h-4 w-4" />}
+              onClick={() => exportProjectJson(project)}
+            >
+              JSON 내보내기
+            </OpalButton>
+            <OpalButton variant="secondary" size="sm" icon={<Link2 className="h-4 w-4" />} onClick={onShare}>
+              공유
+            </OpalButton>
+          </>
+        }
+        meta={
+          <>
+            <Pill variant="subtle">트렌드: {trendLabel}</Pill>
+            <Pill variant="subtle">영향도: {impactLevel}</Pill>
+            <Pill variant="subtle">품질 점수: {qualityScore}</Pill>
+            <Pill variant="subtle">현재 탭: {DETAIL_TABS.find((tab) => tab.id === activeTab)?.label ?? activeTab}</Pill>
+          </>
+        }
+      />
 
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{project.title}</h1>
-        <div className="max-w-4xl rounded-[28px] border border-slate-200/80 bg-white/84 px-5 py-4 shadow-[0_18px_40px_rgba(12,35,58,0.08)]">
-          <MarkdownContent markdown={project.description} variant="hero" />
-        </div>
-
-        <div className="pill-row">
-          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">트렌드: {trendLabel}</span>
-          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">영향도: {impactLevel}</span>
-          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">품질 점수: {qualityScore}</span>
-        </div>
-
-        <div className="action-row">
-          <OpalButton
-            variant={isFavorite ? 'primary' : 'secondary'}
-            size="sm"
-            icon={<Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />}
-            onClick={() => onToggleFavorite(project.id)}
-          >
-            {isFavorite ? '즐겨찾기됨' : '즐겨찾기 추가'}
-          </OpalButton>
-          <OpalButton
-            variant="secondary"
-            size="sm"
-            icon={<Download className="h-4 w-4" />}
-            onClick={() => exportProjectJson(project)}
-          >
-            JSON 내보내기
-          </OpalButton>
-          <OpalButton variant="secondary" size="sm" icon={<Link2 className="h-4 w-4" />} onClick={onShare}>
-            공유
-          </OpalButton>
-        </div>
-      </header>
+      <section className="page-panel-lg">
+        <MarkdownContent markdown={project.description} variant="hero" />
+      </section>
 
       <QuietTabs tabs={DETAIL_TABS} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === 'overview' ? (
         <section className="space-y-6">
-          <OpalCard padding="comfortable" elevation="minimal">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <div>
-                <p className="text-xs text-slate-500">스타</p>
-                <p className="mt-1 text-xl font-semibold text-slate-900">{project.stars}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">포크</p>
-                <p className="mt-1 text-xl font-semibold text-slate-900">{project.forks}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">댓글</p>
-                <p className="mt-1 text-xl font-semibold text-slate-900">{project.comments}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">조회수</p>
-                <p className="mt-1 text-xl font-semibold text-slate-900">{project.views.toLocaleString()}</p>
-              </div>
-            </div>
-          </OpalCard>
+          <section className="page-metric-grid">
+            <MetricCard label="스타" value={project.stars} />
+            <MetricCard label="포크" value={project.forks} />
+            <MetricCard label="댓글" value={project.comments} />
+            <MetricCard label="조회수" value={project.views.toLocaleString()} />
+          </section>
 
           <div className="space-y-3">
             <h2 className="text-xl font-semibold text-slate-900">연관 프로젝트</h2>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
               {relatedProjects.map((related) => (
                 <OpalProjectCard key={related.id} {...related} onClick={() => onOpenProject(related.id)} />
               ))}
@@ -362,6 +347,6 @@ export function QuietProjectDetail({
           </div>
         </section>
       ) : null}
-    </div>
+    </PageShell>
   )
 }

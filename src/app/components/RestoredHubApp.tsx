@@ -101,8 +101,34 @@ const SORT_LABELS: Record<ProjectSort, string> = {
   newest: '최신 순',
 }
 
+const HUB_PAGE_IDS: PageId[] = [
+  'home',
+  'projects',
+  'workspace',
+  'dashboard',
+  'ranking',
+  'community',
+  'knowledge',
+  'gallery',
+  'collections',
+  'achievements',
+  'roadmap',
+  'org-chart',
+  'profile',
+  'settings',
+  'project-detail',
+]
+
 function parseBooleanParam(value: string | null) {
   return value === 'true' || value === '1'
+}
+
+function parsePageParam(value: string | null): PageId | null {
+  if (!value) {
+    return null
+  }
+
+  return HUB_PAGE_IDS.includes(value as PageId) ? (value as PageId) : null
 }
 
 function readHubUrlState() {
@@ -116,6 +142,7 @@ function readHubUrlState() {
   const sort = url.searchParams.get('sort')
 
   return {
+    page: parsePageParam(url.searchParams.get('page')),
     projectId: Number.isFinite(project) && project > 0 ? project : null,
     category: url.searchParams.get('category') ?? 'all',
     department: url.searchParams.get('department') ?? 'all',
@@ -143,6 +170,9 @@ function buildHubUrl(options: {
   }
 
   const url = new URL(window.location.origin + '/')
+  if (options.page !== 'home') {
+    url.searchParams.set('page', options.page)
+  }
 
   if (options.page === 'projects' || options.page === 'project-detail') {
     if (options.category !== 'all') {
@@ -182,6 +212,10 @@ function resolvePageFromUrlState(state: ReturnType<typeof readHubUrlState> | nul
 
   if (state.projectId) {
     return 'project-detail'
+  }
+
+  if (state.page && state.page !== 'project-detail') {
+    return state.page
   }
 
   if (
@@ -348,8 +382,11 @@ export default function RestoredHubApp() {
 
     if (selectedProjectId !== null) {
       setPage('project-detail')
-    } else if (resolvePageFromUrlState(initialUrlState) === 'projects') {
-      setPage('projects')
+    } else {
+      const restoredPage = resolvePageFromUrlState(initialUrlState)
+      if (restoredPage !== 'project-detail') {
+        setPage(restoredPage)
+      }
     }
   }, [initialUrlState, projects, selectedProjectId])
 
@@ -416,13 +453,29 @@ export default function RestoredHubApp() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  function scrollToPageTop(behavior: ScrollBehavior = 'smooth') {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior })
+    })
+  }
+
   function navigateToPage(nextPage: PageId) {
     if (nextPage === 'project-detail') {
       return
     }
 
+    if (selectedProjectId === null && page === nextPage) {
+      scrollToPageTop()
+      return
+    }
+
     setSelectedProjectId(null)
     setPage(nextPage)
+    scrollToPageTop()
   }
 
   const departments = useMemo(() => {
@@ -835,6 +888,7 @@ export default function RestoredHubApp() {
         <UserDashboard
           projects={projects as never}
           favoriteIds={favoriteProjectIds}
+          recentProjectIds={recentProjectIds}
           onProjectClick={openProject}
           onNavigateToPage={(nextPage) => navigateToPage(nextPage as PageId)}
         />
@@ -877,11 +931,7 @@ export default function RestoredHubApp() {
     }
 
     if (page === 'achievements') {
-      return (
-        <div className="page-shell">
-          <UserAchievements {...achievementStats} />
-        </div>
-      )
+      return <UserAchievements {...achievementStats} />
     }
 
     if (page === 'roadmap') {
@@ -905,11 +955,7 @@ export default function RestoredHubApp() {
     }
 
     if (page === 'settings') {
-      return (
-        <div className="page-shell">
-          <UserSettings />
-        </div>
-      )
+      return <UserSettings />
     }
 
     if (page === 'projects') {
@@ -991,7 +1037,7 @@ export default function RestoredHubApp() {
       ) : null}
 
       <PlatformFrame
-        brandMark="JB"
+        brandMark={<img src="/Logo.png" alt="" className="platform-brand-image" />}
         brandEyebrow="프로젝트 허브"
         brandTitle="JB Hub"
         brandDescription="사내 프로젝트, 파일, Docker 배포 흐름을 같은 맥락에서 탐색하는 운영형 허브입니다."

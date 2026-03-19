@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Folder, FolderPlus, Plus, Trash2, X } from 'lucide-react'
-import { PageHeader, PageShell, Pill } from '../common'
+import { MetricCard, PageHeader, PageShell, Pill } from '../common'
 
 interface Collection {
   id: string
@@ -38,14 +38,14 @@ const COLORS = [
   { name: 'Cyan', value: 'bg-cyan-500', light: 'bg-cyan-50' },
 ] as const
 
-const EMOJIS = ['📁', '🗂️', '🚀', '⭐', '🧪', '📊', '🛠️', '💡', '📚', '🎯', '🔍', '🤝']
+const EMOJIS = ['📁', '⭐', '🚀', '💡', '🔎', '🧪', '📌', '📚', '🛠', '🎯', '🧭', '🗂']
 
 function getDefaultCollections(): Collection[] {
   return [
     {
       id: 'favorites',
-      name: '즐겨찾기 보관함',
-      description: '다시 보고 싶은 프로젝트를 모아두는 기본 컬렉션',
+      name: '즐겨찾기 모음',
+      description: '다시 보고 싶은 프로젝트를 가장 먼저 모아보는 기본 컬렉션입니다.',
       color: 'bg-slate-500',
       emoji: '⭐',
       projectIds: [],
@@ -86,6 +86,15 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
     [collections, selectedCollectionId],
   )
 
+  const totalCollectedProjects = useMemo(
+    () => collections.reduce((sum, collection) => sum + collection.projectIds.length, 0),
+    [collections],
+  )
+  const publicCollections = useMemo(
+    () => collections.filter((collection) => collection.isPublic).length,
+    [collections],
+  )
+
   const persistCollections = (nextCollections: Collection[]) => {
     setCollections(nextCollections)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCollections))
@@ -124,7 +133,7 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
   }
 
   const handleDeleteCollection = (collectionId: string) => {
-    if (!confirm('이 컬렉션을 삭제하시겠습니까?')) {
+    if (!window.confirm('이 컬렉션을 삭제하시겠습니까?')) {
       return
     }
 
@@ -175,6 +184,13 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
     ? projects.filter((project) => !selectedCollection.projectIds.includes(project.id))
     : []
 
+  const summaryMetrics = [
+    { key: 'collections', label: '컬렉션 수', value: collections.length },
+    { key: 'projects', label: '담긴 프로젝트', value: totalCollectedProjects },
+    { key: 'public', label: '공개 컬렉션', value: publicCollections },
+    { key: 'available', label: '추가 가능', value: availableProjects.length },
+  ]
+
   return (
     <PageShell density="compact">
       <PageHeader
@@ -185,62 +201,67 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
           </>
         }
         title="프로젝트 컬렉션"
-        description="업무 목적이나 팀 단위로 프로젝트를 묶어서 다시 보기 쉬운 보관함을 만들 수 있습니다."
+        description="업무 목적이나 팀 관심사별로 프로젝트를 묶어서, 다시 보기 쉬운 큐레이션 보드를 만들 수 있습니다."
         meta={
           <>
             <Pill variant="subtle">컬렉션: {collections.length}</Pill>
-            <Pill variant="subtle">
-              상태: {selectedCollection ? `${selectedCollection.name} 열람 중` : '목록 보기'}
-            </Pill>
+            <Pill variant="subtle">프로젝트: {totalCollectedProjects}</Pill>
+            <Pill variant="subtle">상태: {selectedCollection ? `${selectedCollection.name} 열람 중` : '목록 보기'}</Pill>
           </>
         }
       />
 
-      <section className="page-panel flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Folder className="h-5 w-5 text-slate-700" />
-          <h2 className="text-lg font-semibold text-slate-900">컬렉션 관리</h2>
-          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-sm text-slate-600">
-            {collections.length}
-          </span>
+      <section className="page-metric-grid">
+        {summaryMetrics.map((metric) => (
+          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
+        ))}
+      </section>
+
+      <section className="page-toolbar-panel page-toolbar-stack">
+        <div className="page-toolbar-row">
+          <div className="page-toolbar-cluster">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200/80 bg-white/90 text-slate-700">
+              <Folder className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">컬렉션 관리</h2>
+              <p className="page-toolbar-note">개인 보드처럼 프로젝트를 모아 흐름과 맥락을 정리할 수 있습니다.</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => setShowCreateForm((previous) => !previous)} className="glass-inline-button">
+            <FolderPlus className="h-4 w-4" />
+            새 컬렉션
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowCreateForm((previous) => !previous)}
-          className="inline-flex items-center gap-2 rounded-xl border border-[#264969] bg-[#264969] px-4 py-2 text-sm font-semibold text-white transition-colors hover:border-[#1f3e5a] hover:bg-[#1f3e5a]"
-        >
-          <FolderPlus className="h-4 w-4" />
-          새 컬렉션
-        </button>
       </section>
 
       {showCreateForm ? (
         <section className="page-panel-lg">
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">새 컬렉션 만들기</h3>
-              <p className="mt-1 text-sm text-slate-600">이름, 설명, 색상, 아이콘을 선택해 컬렉션을 생성합니다.</p>
+              <p className="mt-1 text-sm text-slate-600">이름, 설명, 색상, 아이콘을 고르면 컬렉션 카드와 상세 보드에 동일한 스타일이 적용됩니다.</p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <label className="space-y-1">
+              <label className="space-y-1.5">
                 <span className="field-label">이름</span>
                 <input
                   type="text"
                   value={newCollectionName}
                   onChange={(event) => setNewCollectionName(event.target.value)}
-                  placeholder="예: 프런트엔드 참고 자료"
+                  placeholder="예: AI 레퍼런스 모음"
                   className="select-soft"
                 />
               </label>
 
-              <label className="space-y-1">
+              <label className="space-y-1.5">
                 <span className="field-label">설명</span>
                 <input
                   type="text"
                   value={newCollectionDescription}
                   onChange={(event) => setNewCollectionDescription(event.target.value)}
-                  placeholder="컬렉션 목적을 간단히 적어주세요"
+                  placeholder="컬렉션의 목적을 간단히 적어 주세요."
                   className="select-soft"
                 />
               </label>
@@ -254,7 +275,7 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
                     key={color.value}
                     type="button"
                     onClick={() => setSelectedColor(color)}
-                    className={`h-8 w-8 rounded-lg ${color.value} ${
+                    className={`h-9 w-9 rounded-2xl ${color.value} ${
                       selectedColor.value === color.value ? 'ring-2 ring-[#315779] ring-offset-2' : ''
                     }`}
                     aria-label={color.name}
@@ -271,8 +292,8 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
                     key={emoji}
                     type="button"
                     onClick={() => setSelectedEmoji(emoji)}
-                    className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${
-                      selectedEmoji === emoji ? 'bg-sky-100 ring-2 ring-[#315779]' : 'bg-slate-100'
+                    className={`flex h-11 w-11 items-center justify-center rounded-2xl text-xl transition ${
+                      selectedEmoji === emoji ? 'bg-sky-100 ring-2 ring-[#315779]' : 'bg-slate-100 hover:bg-slate-200'
                     }`}
                   >
                     {emoji}
@@ -282,20 +303,16 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
             </div>
 
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={resetCreateForm}
-                className="rounded-xl border border-slate-300 px-4 py-2 text-slate-700 transition-colors hover:bg-slate-50"
-              >
+              <button type="button" onClick={resetCreateForm} className="filter-chip-clear">
                 취소
               </button>
               <button
                 type="button"
                 onClick={handleCreateCollection}
                 disabled={!newCollectionName.trim()}
-                className="rounded-xl border border-[#264969] bg-[#264969] px-4 py-2 text-white transition-colors hover:border-[#1f3e5a] hover:bg-[#1f3e5a] disabled:opacity-50"
+                className="glass-inline-button disabled:cursor-not-allowed disabled:opacity-50"
               >
-                만들기
+                컬렉션 만들기
               </button>
             </div>
           </div>
@@ -316,30 +333,34 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
           </button>
 
           <div className="page-panel-lg">
-            <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-3">
-                <span className="text-4xl">{selectedCollection.emoji}</span>
+                <span className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-slate-100 text-3xl">
+                  {selectedCollection.emoji}
+                </span>
                 <div>
-                  <h3 className="text-xl font-bold text-slate-900">{selectedCollection.name}</h3>
+                  <h3 className="text-2xl font-semibold text-slate-900">{selectedCollection.name}</h3>
                   {selectedCollection.description ? (
                     <p className="mt-1 text-sm text-slate-500">{selectedCollection.description}</p>
                   ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Pill variant="subtle">프로젝트 {selectedCollection.projectIds.length}</Pill>
+                    <Pill variant="subtle">
+                      생성일 {new Date(selectedCollection.createdAt).toLocaleDateString('ko-KR')}
+                    </Pill>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowProjectPicker(true)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50"
-                >
+              <div className="page-toolbar-cluster">
+                <button type="button" onClick={() => setShowProjectPicker(true)} className="glass-inline-button">
                   <Plus className="h-4 w-4" />
                   프로젝트 추가
                 </button>
                 <button
                   type="button"
                   onClick={() => handleDeleteCollection(selectedCollection.id)}
-                  className="rounded-lg p-2 text-slate-400 transition-colors hover:text-rose-600"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -347,10 +368,10 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
             </div>
 
             {showProjectPicker ? (
-              <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <div className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h4 className="text-sm font-semibold text-slate-900">컬렉션에 프로젝트 추가</h4>
-                  <button type="button" onClick={() => setShowProjectPicker(false)} className="text-slate-400 hover:text-slate-700">
+                  <button type="button" onClick={() => setShowProjectPicker(false)} className="glass-icon-button h-8 w-8 rounded-xl">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
@@ -360,14 +381,14 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
                       key={project.id}
                       type="button"
                       onClick={() => handleAddProject(selectedCollection.id, project.id)}
-                      className="rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:bg-slate-50"
+                      className="rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-300 hover:bg-slate-50"
                     >
                       <p className="font-medium text-slate-900">{project.title}</p>
                       <p className="mt-1 text-sm text-slate-500">{project.department}</p>
                     </button>
                   ))}
                   {availableProjects.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
+                    <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
                       추가할 수 있는 프로젝트가 없습니다.
                     </p>
                   ) : null}
@@ -375,40 +396,40 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
               </div>
             ) : null}
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="mt-6 page-card-grid">
               {getCollectionProjects(selectedCollection).map((project) => (
                 <article
                   key={project.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:bg-slate-50"
+                  className="rounded-[24px] border border-slate-200 bg-white/94 p-4 shadow-[0_10px_22px_rgba(15,23,42,0.05)]"
                 >
-                  <button
-                    type="button"
-                    onClick={() => onProjectClick?.(project.id)}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <p className="truncate font-medium text-slate-900">{project.title}</p>
+                  <button type="button" onClick={() => onProjectClick?.(project.id)} className="block w-full text-left">
+                    <p className="truncate text-base font-semibold text-slate-900">{project.title}</p>
                     <p className="mt-1 text-sm text-slate-500">{project.department}</p>
+                    <p className="mt-3 text-xs text-slate-500">스타 {project.stars}</p>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveProject(selectedCollection.id, project.id)}
-                    className="rounded-lg p-2 text-slate-400 transition-colors hover:text-rose-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveProject(selectedCollection.id, project.id)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </article>
               ))}
 
               {getCollectionProjects(selectedCollection).length === 0 ? (
-                <div className="empty-panel md:col-span-2">
+                <div className="empty-panel md:col-span-2 2xl:col-span-3">
                   <p className="text-sm text-slate-600">아직 담긴 프로젝트가 없습니다.</p>
+                  <p className="mt-2 text-xs text-slate-500">상단의 추가 버튼으로 관심 프로젝트를 모아보세요.</p>
                 </div>
               ) : null}
             </div>
           </div>
         </section>
       ) : (
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="page-card-grid">
           {collections.map((collection) => {
             const collectionProjects = getCollectionProjects(collection)
             const colorClass = COLORS.find((color) => color.value === collection.color)?.light ?? 'bg-slate-100'
@@ -417,9 +438,9 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
               <article
                 key={collection.id}
                 onClick={() => setSelectedCollectionId(collection.id)}
-                className="cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white transition-[box-shadow,border-color] hover:border-slate-300 hover:shadow-sm"
+                className="cursor-pointer overflow-hidden rounded-[26px] border border-slate-200 bg-white/96 shadow-[0_12px_26px_rgba(17,37,56,0.08)] transition-[box-shadow,border-color,transform] duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_18px_32px_rgba(14,33,51,0.12)]"
               >
-                <div className={`p-4 ${colorClass}`}>
+                <div className={`p-5 ${colorClass}`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-3xl">{collection.emoji}</span>
                     <button
@@ -428,38 +449,42 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
                         event.stopPropagation()
                         handleDeleteCollection(collection.id)
                       }}
-                      className="rounded-lg p-1 text-slate-400 transition-colors hover:text-rose-600"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/80 text-slate-400 transition hover:text-rose-600"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
-                  <h3 className="mt-2 font-bold text-slate-900">{collection.name}</h3>
+                  <h3 className="mt-3 text-lg font-semibold text-slate-900">{collection.name}</h3>
                   {collection.description ? (
                     <p className="mt-1 line-clamp-2 text-sm text-slate-600">{collection.description}</p>
                   ) : null}
                 </div>
 
-                <div className="p-4">
+                <div className="space-y-3 p-5">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-slate-500">{collectionProjects.length}개 프로젝트</span>
                     <span className="text-slate-400">{new Date(collection.createdAt).toLocaleDateString('ko-KR')}</span>
                   </div>
 
                   {collectionProjects.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {collectionProjects.slice(0, 3).map((project) => (
                         <span
                           key={project.id}
-                          className="max-w-[120px] truncate rounded border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-600"
+                          className="max-w-[140px] truncate rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs text-slate-600"
                         >
                           {project.title}
                         </span>
                       ))}
                       {collectionProjects.length > 3 ? (
-                        <span className="px-2 py-1 text-xs text-slate-500">+{collectionProjects.length - 3}</span>
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-500">
+                          +{collectionProjects.length - 3}
+                        </span>
                       ) : null}
                     </div>
-                  ) : null}
+                  ) : (
+                    <p className="text-sm text-slate-500">아직 담긴 프로젝트가 없습니다.</p>
+                  )}
                 </div>
               </article>
             )
@@ -471,7 +496,7 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
         <div className="empty-panel">
           <Folder className="mx-auto mb-4 h-16 w-16 text-slate-300" />
           <p className="text-slate-500">생성된 컬렉션이 없습니다.</p>
-          <p className="mt-1 text-sm text-slate-400">프로젝트를 목적별로 묶어서 관리해 보세요.</p>
+          <p className="mt-1 text-sm text-slate-400">프로젝트를 목적별로 묶어 관리해 보세요.</p>
         </div>
       ) : null}
     </PageShell>

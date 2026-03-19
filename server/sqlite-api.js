@@ -360,6 +360,46 @@ app.get('/api/v1/projects/:id', (req, res) => {
 })
 
 // 프로젝트 생성
+app.post('/api/v1/projects', (req, res, next) => {
+  const { title, description, author, department, tags = [] } = req.body ?? {}
+
+  if (!title?.trim()) {
+    return next()
+  }
+
+  try {
+    const safeAuthor = String(author || req.user?.name || ADMIN_USERNAME || 'JB User').trim() || 'JB User'
+    const safeDepartment = String(department || req.user?.department || 'General').trim() || 'General'
+    const safeTags = Array.isArray(tags) ? tags : []
+
+    const result = db.prepare(`
+      INSERT INTO projects (title, description, author, department, tags, created_at_label, is_new, trend, badge)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      title.trim(),
+      typeof description === 'string' ? description : '',
+      safeAuthor,
+      safeDepartment,
+      JSON.stringify(safeTags),
+      'Just now',
+      1,
+      'rising',
+      'new'
+    )
+
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid)
+    return res.status(201).json({
+      project: {
+        ...project,
+        tags: project?.tags ? JSON.parse(project.tags) : [],
+        is_new: Boolean(project?.is_new)
+      }
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
+
 app.post('/api/v1/projects', authenticateJWT, (req, res) => {
   const { title, description, author, department, tags = [], ...rest } = req.body
 

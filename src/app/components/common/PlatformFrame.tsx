@@ -45,36 +45,40 @@ export function PlatformFrame<TId extends string = string>({
     <div className={cn('platform-shell', className)}>
       <aside className="platform-sidebar">
         <div className="platform-sidebar-card">
-          <div className="platform-brand-row">
-            <div className="platform-brand-mark">{brandMark}</div>
-            <div className="platform-brand-copy">
-              <p className="platform-brand-eyebrow">{brandEyebrow}</p>
-              <h1 className="platform-brand-title">{brandTitle}</h1>
-              {brandDescription ? <p className="platform-brand-description">{brandDescription}</p> : null}
-            </div>
-          </div>
-
-          {sidebarLead ? <div className="platform-sidebar-slot">{sidebarLead}</div> : null}
-
-          <div className="platform-nav-stack">
-            {navigationSections.map((section, sectionIndex) => (
-              <div key={`section-${sectionIndex}`} className="platform-nav-section">
-                {section.title ? <p className="platform-nav-section-title">{section.title}</p> : null}
-                <div className="space-y-2">
-                  {section.items.map((item) => (
-                    <NavigationMenuItem
-                      key={item.id}
-                      item={item}
-                      isActive={item.id === activeNavigationId}
-                      onClick={onSelectNavigation}
-                    />
-                  ))}
-                </div>
+          <div className="platform-sidebar-card-inner">
+            <div className="platform-brand-row">
+              <div className="platform-brand-mark">{brandMark}</div>
+              <div className="platform-brand-copy">
+                <p className="platform-brand-eyebrow">{brandEyebrow}</p>
+                <h1 className="platform-brand-title">{brandTitle}</h1>
+                {brandDescription ? <p className="platform-brand-description">{brandDescription}</p> : null}
               </div>
-            ))}
-          </div>
+            </div>
 
-          {sidebarFooter ? <div className="platform-sidebar-footer">{sidebarFooter}</div> : null}
+            {sidebarLead ? <div className="platform-sidebar-slot">{sidebarLead}</div> : null}
+
+            <div className="platform-nav-stack">
+              {navigationSections.map((section, sectionIndex) => (
+                <div key={`section-${sectionIndex}`} className="platform-nav-section">
+                  {section.title ? <p className="platform-nav-section-title">{section.title}</p> : null}
+                  <div className="platform-nav-section-card">
+                    <div className="space-y-2">
+                      {section.items.map((item) => (
+                        <NavigationMenuItem
+                          key={item.id}
+                          item={item}
+                          isActive={item.id === activeNavigationId}
+                          onClick={onSelectNavigation}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {sidebarFooter ? <div className="platform-sidebar-footer">{sidebarFooter}</div> : null}
+          </div>
         </div>
       </aside>
 

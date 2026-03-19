@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Calendar, CheckCircle, Circle, Clock, Map, Plus, Trash2 } from 'lucide-react'
-import { PageHeader, PageShell, Pill } from '../common'
+import { MetricCard, PageHeader, PageShell, Pill } from '../common'
 
 interface MilestoneTask {
   id: string
@@ -27,39 +27,39 @@ const DEFAULT_MILESTONES: Milestone[] = [
   {
     id: '1',
     title: '기획 정리',
-    description: '요구사항을 정리하고 초기 범위를 확정합니다.',
+    description: '요구사항을 정리하고 초기 범위를 고정합니다.',
     status: 'completed',
     completedAt: '2024-01-15',
     tasks: [
       { id: '1-1', title: '요구사항 확정', completed: true },
       { id: '1-2', title: '화면 흐름 정리', completed: true },
-      { id: '1-3', title: '개발 범위 승인', completed: true },
+      { id: '1-3', title: '개발 범위 확인', completed: true },
     ],
   },
   {
     id: '2',
-    title: '핵심 기능 개발',
-    description: '주요 기능과 사용자 흐름을 구현합니다.',
+    title: '중심 기능 개발',
+    description: '핵심 기능과 사용자 흐름을 구현합니다.',
     status: 'in_progress',
     dueDate: '2024-03-31',
     tasks: [
-      { id: '2-1', title: '도메인 API 연결', completed: true },
-      { id: '2-2', title: '주요 UI 구성', completed: true },
+      { id: '2-1', title: '주요 API 연결', completed: true },
+      { id: '2-2', title: '핵심 UI 구성', completed: true },
       { id: '2-3', title: '데이터 연동 검증', completed: false },
       { id: '2-4', title: '권한 처리 마무리', completed: false },
     ],
   },
   {
     id: '3',
-    title: '테스트와 안정화',
-    description: '에러 수정과 사용성 보완을 진행합니다.',
+    title: '테스트 안정화',
+    description: '버그 수정과 사용자 피드백 반영을 진행합니다.',
     status: 'planned',
     dueDate: '2024-04-15',
   },
   {
     id: '4',
     title: '배포 준비',
-    description: '운영 환경 체크리스트를 정리하고 배포합니다.',
+    description: '운영 체크리스트를 정리하고 배포를 준비합니다.',
     status: 'planned',
     dueDate: '2024-05-01',
   },
@@ -102,6 +102,15 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
     return Math.round(milestones.reduce((sum, milestone) => sum + getProgress(milestone), 0) / milestones.length)
   }, [milestones])
 
+  const completedMilestones = useMemo(
+    () => milestones.filter((milestone) => milestone.status === 'completed').length,
+    [milestones],
+  )
+  const activeMilestones = useMemo(
+    () => milestones.filter((milestone) => milestone.status === 'in_progress').length,
+    [milestones],
+  )
+
   const handleAddMilestone = () => {
     const normalizedTitle = newTitle.trim()
     if (!normalizedTitle) {
@@ -127,7 +136,7 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
   }
 
   const handleDeleteMilestone = (milestoneId: string) => {
-    if (!confirm('이 마일스톤을 삭제하시겠습니까?')) {
+    if (!window.confirm('이 마일스톤을 삭제하시겠습니까?')) {
       return
     }
     setMilestones((previous) => previous.filter((milestone) => milestone.id !== milestoneId))
@@ -174,6 +183,13 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
     return <Circle className="h-6 w-6 text-slate-400" />
   }
 
+  const summaryMetrics = [
+    { key: 'milestones', label: '마일스톤', value: milestones.length },
+    { key: 'completed', label: '완료 단계', value: completedMilestones },
+    { key: 'active', label: '진행 중', value: activeMilestones },
+    { key: 'progress', label: '전체 진행률', value: `${overallProgress}%` },
+  ]
+
   return (
     <PageShell>
       <PageHeader
@@ -184,31 +200,36 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
           </>
         }
         title={`${projectTitle} 로드맵`}
-        description="마일스톤과 세부 작업을 하나의 흐름으로 정리해 진행 상황을 추적할 수 있습니다."
+        description="마일스톤과 세부 작업을 하나의 흐름으로 정리해 현재 상태와 다음 단계를 함께 볼 수 있는 추진 보드입니다."
         meta={
           <>
             <Pill variant="subtle">마일스톤: {milestones.length}</Pill>
-            <Pill variant="subtle">전체 진행률: {overallProgress}%</Pill>
+            <Pill variant="subtle">진행률: {overallProgress}%</Pill>
+            <Pill variant="subtle">진행 중: {activeMilestones}</Pill>
           </>
         }
       />
 
-      <section className="page-panel flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Map className="h-5 w-5 text-slate-700" />
-          <h2 className="text-lg font-semibold text-slate-900">로드맵 관리</h2>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowAddForm((previous) => !previous)}
-          className="inline-flex items-center gap-2 rounded-xl border border-[#264969] bg-[#264969] px-4 py-2 text-sm font-semibold text-white transition-colors hover:border-[#1f3e5a] hover:bg-[#1f3e5a]"
-        >
-          <Plus className="h-4 w-4" />
-          마일스톤 추가
-        </button>
+      <section className="page-metric-grid">
+        {summaryMetrics.map((metric) => (
+          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
+        ))}
       </section>
 
-      <section className="surface-soft rounded-2xl p-4">
+      <section className="page-toolbar-panel page-toolbar-stack">
+        <div className="page-toolbar-row">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">로드맵 관리</h2>
+            <p className="page-toolbar-note">각 단계의 상태와 작업 진행률이 동일한 규칙으로 표시되도록 정리했습니다.</p>
+          </div>
+          <button type="button" onClick={() => setShowAddForm((previous) => !previous)} className="glass-inline-button">
+            <Plus className="h-4 w-4" />
+            마일스톤 추가
+          </button>
+        </div>
+      </section>
+
+      <section className="page-panel">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-medium text-slate-700">전체 진행률</span>
           <span className="text-lg font-bold text-[#315779]">{overallProgress}%</span>
@@ -226,10 +247,10 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
           <div className="space-y-4">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">새 마일스톤 추가</h3>
-              <p className="mt-1 text-sm text-slate-600">제목, 상태, 목표 일정을 입력해 로드맵 흐름에 추가합니다.</p>
+              <p className="mt-1 text-sm text-slate-600">제목, 상태, 목표 일정을 입력해 로드맵 흐름에 바로 추가할 수 있습니다.</p>
             </div>
 
-            <label className="space-y-1">
+            <label className="space-y-1.5">
               <span className="field-label">제목</span>
               <input
                 type="text"
@@ -240,55 +261,42 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
               />
             </label>
 
-            <label className="space-y-1">
+            <label className="space-y-1.5">
               <span className="field-label">설명</span>
               <input
                 type="text"
                 value={newDescription}
                 onChange={(event) => setNewDescription(event.target.value)}
-                placeholder="이번 마일스톤의 목적을 간단히 적어주세요"
+                placeholder="이번 마일스톤의 목적을 간단히 적어 주세요."
                 className="select-soft"
               />
             </label>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="space-y-1">
+              <label className="space-y-1.5">
                 <span className="field-label">상태</span>
-                <select
-                  value={newStatus}
-                  onChange={(event) => setNewStatus(event.target.value as Milestone['status'])}
-                  className="select-soft"
-                >
+                <select value={newStatus} onChange={(event) => setNewStatus(event.target.value as Milestone['status'])} className="select-soft">
                   <option value="planned">계획</option>
                   <option value="in_progress">진행 중</option>
                   <option value="completed">완료</option>
                 </select>
               </label>
 
-              <label className="space-y-1">
+              <label className="space-y-1.5">
                 <span className="field-label">목표 일정</span>
-                <input
-                  type="date"
-                  value={newDueDate}
-                  onChange={(event) => setNewDueDate(event.target.value)}
-                  className="select-soft"
-                />
+                <input type="date" value={newDueDate} onChange={(event) => setNewDueDate(event.target.value)} className="select-soft" />
               </label>
             </div>
 
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowAddForm(false)}
-                className="rounded-xl border border-slate-300 px-4 py-2 text-slate-700 transition-colors hover:bg-slate-50"
-              >
+              <button type="button" onClick={() => setShowAddForm(false)} className="filter-chip-clear">
                 취소
               </button>
               <button
                 type="button"
                 onClick={handleAddMilestone}
                 disabled={!newTitle.trim()}
-                className="rounded-xl border border-[#264969] bg-[#264969] px-4 py-2 text-white transition-colors hover:border-[#1f3e5a] hover:bg-[#1f3e5a] disabled:opacity-50"
+                className="glass-inline-button disabled:cursor-not-allowed disabled:opacity-50"
               >
                 추가
               </button>
@@ -297,7 +305,7 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
         </section>
       ) : null}
 
-      <section className="space-y-4">
+      <section className="page-list-stack">
         {milestones.map((milestone, index) => {
           const progress = getProgress(milestone)
           const isLast = index === milestones.length - 1
@@ -319,13 +327,13 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
                   {renderStatusIcon(milestone.status)}
                 </div>
 
-                <div className="flex-1 rounded-xl border border-slate-200 bg-white p-4">
-                  <div className="mb-2 flex items-start justify-between gap-3">
+                <div className="flex-1 rounded-[24px] border border-slate-200 bg-white/95 p-5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                  <div className="mb-3 flex items-start justify-between gap-3">
                     <div className="flex-1">
-                      <div className="mb-1 flex items-center gap-2">
-                        <h3 className="font-semibold text-slate-900">{milestone.title}</h3>
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-semibold text-slate-900">{milestone.title}</h3>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-xs ${
+                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                             milestone.status === 'completed'
                               ? 'bg-sky-100 text-sky-700'
                               : milestone.status === 'in_progress'
@@ -339,11 +347,11 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
                       {milestone.description ? <p className="text-sm text-slate-600">{milestone.description}</p> : null}
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="page-toolbar-cluster">
                       <select
                         value={milestone.status}
                         onChange={(event) => handleStatusChange(milestone.id, event.target.value as Milestone['status'])}
-                        className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
+                        className="select-soft max-w-[9rem]"
                       >
                         <option value="planned">계획</option>
                         <option value="in_progress">진행 중</option>
@@ -352,7 +360,7 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
                       <button
                         type="button"
                         onClick={() => handleDeleteMilestone(milestone.id)}
-                        className="rounded-lg p-1 text-slate-400 transition-colors hover:text-rose-600"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -379,9 +387,9 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
                   </div>
 
                   {milestone.dueDate ? (
-                    <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-                      <Calendar className="h-3 w-3" />
-                      <span>목표 일정: {new Date(milestone.dueDate).toLocaleDateString('ko-KR')}</span>
+                    <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-500">
+                      <Calendar className="h-3.5 w-3.5" />
+                      목표 일정 {new Date(milestone.dueDate).toLocaleDateString('ko-KR')}
                     </div>
                   ) : null}
 
@@ -390,7 +398,7 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
                       {milestone.tasks.map((task) => (
                         <div
                           key={task.id}
-                          className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2 transition-colors hover:bg-slate-100"
+                          className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 transition-colors hover:bg-slate-100"
                         >
                           <button
                             type="button"
@@ -401,7 +409,7 @@ export function ProjectRoadmap({ projectId: _projectId, projectTitle = '프로�
                           >
                             {task.completed ? <CheckCircle className="h-3 w-3" /> : null}
                           </button>
-                          <span className={`flex-1 text-sm ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                          <span className={`flex-1 text-sm ${task.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>
                             {task.title}
                           </span>
                         </div>

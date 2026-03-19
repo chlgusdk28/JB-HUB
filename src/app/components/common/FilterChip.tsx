@@ -12,10 +12,10 @@ function FilterChipBase({ children, isActive, onClick, className = '' }: FilterC
     <button
       type="button"
       onClick={onClick}
-      className={`chip-filter ${isActive ? 'chip-filter-active' : 'chip-filter-idle'} ${className}`.trim()}
+      className={`filter-chip-button chip-filter ${isActive ? 'chip-filter-active' : 'chip-filter-idle'} ${className}`.trim()}
       aria-pressed={isActive}
     >
-      {children}
+      <span className="filter-chip-label">{children}</span>
     </button>
   )
 }

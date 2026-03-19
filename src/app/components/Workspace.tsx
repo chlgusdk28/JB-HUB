@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Clock3, FolderGit2, Sparkles, Star, Users } from 'lucide-react'
 import type { Project } from '../lib/project-utils'
-import { OpalCard } from './opal/OpalCard'
+import { MetricCard, PageHeader, PageShell, Pill } from './common'
 import { OpalProjectCard } from './opal/OpalProjectCard'
 
 interface WorkspaceProps {
@@ -16,6 +16,13 @@ interface WorkspaceProps {
 }
 
 type WorkspaceTab = 'owned' | 'team' | 'favorites' | 'recent'
+
+const WORKSPACE_TAB_LABELS: Record<WorkspaceTab, string> = {
+  owned: '내 프로젝트',
+  team: '같은 부서',
+  favorites: '즐겨찾기',
+  recent: '최근 본 항목',
+}
 
 export function Workspace({
   projects,
@@ -65,7 +72,7 @@ export function Workspace({
       default:
         return ownedProjects
     }
-  }, [activeTab, ownedProjects, sameDepartmentProjects, favoriteProjects, recentProjects])
+  }, [activeTab, favoriteProjects, ownedProjects, recentProjects, sameDepartmentProjects])
 
   const topTags = useMemo(() => {
     const counts = new Map<string, number>()
@@ -74,119 +81,109 @@ export function Workspace({
         counts.set(tag, (counts.get(tag) ?? 0) + 1)
       }
     }
+
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
+      .slice(0, 8)
   }, [projects])
 
   return (
-    <div className="page-shell">
-      <header className="space-y-2">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">워크스페이스</h1>
-        <p className="text-sm text-slate-600 sm:text-base">
-          내 프로젝트, 부서 협업, 저장 항목을 한곳에서 관리하는 작업 공간입니다.
-        </p>
-      </header>
+    <PageShell>
+      <PageHeader
+        eyebrow={
+          <>
+            <FolderGit2 className="h-3.5 w-3.5" />
+            Workspace Overview
+          </>
+        }
+        title="워크스페이스"
+        description="내 프로젝트, 같은 부서 작업, 즐겨찾기, 최근 본 항목을 한 화면에서 관리하는 개인 작업 공간입니다."
+        meta={
+          <>
+            <Pill variant="subtle">사용자: {currentUser.name}</Pill>
+            <Pill variant="subtle">부서: {currentUser.department}</Pill>
+            <Pill variant="subtle">현재 보기: {WORKSPACE_TAB_LABELS[activeTab]}</Pill>
+            <Pill variant="subtle">결과: {currentList.length}</Pill>
+          </>
+        }
+      />
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <OpalCard padding="comfortable" elevation="minimal">
-          <div className="flex items-center gap-3">
-            <FolderGit2 className="h-5 w-5 text-slate-700" />
-            <div>
-              <p className="text-sm text-slate-500">내 프로젝트</p>
-              <p className="text-2xl font-semibold text-slate-900">{ownedProjects.length}</p>
-            </div>
-          </div>
-        </OpalCard>
-        <OpalCard padding="comfortable" elevation="minimal">
-          <div className="flex items-center gap-3">
-            <Users className="h-5 w-5 text-slate-700" />
-            <div>
-              <p className="text-sm text-slate-500">같은 부서</p>
-              <p className="text-2xl font-semibold text-slate-900">{sameDepartmentProjects.length}</p>
-            </div>
-          </div>
-        </OpalCard>
-        <OpalCard padding="comfortable" elevation="minimal">
-          <div className="flex items-center gap-3">
-            <Star className="h-5 w-5 text-slate-700" />
-            <div>
-              <p className="text-sm text-slate-500">즐겨찾기</p>
-              <p className="text-2xl font-semibold text-slate-900">{favoriteProjects.length}</p>
-            </div>
-          </div>
-        </OpalCard>
-        <OpalCard padding="comfortable" elevation="minimal">
-          <div className="flex items-center gap-3">
-            <Clock3 className="h-5 w-5 text-slate-700" />
-            <div>
-              <p className="text-sm text-slate-500">최근 조회</p>
-              <p className="text-2xl font-semibold text-slate-900">{recentProjects.length}</p>
-            </div>
-          </div>
-        </OpalCard>
+      <section className="page-metric-grid">
+        <MetricCard label="내 프로젝트" value={ownedProjects.length} />
+        <MetricCard label="같은 부서" value={sameDepartmentProjects.length} />
+        <MetricCard label="즐겨찾기" value={favoriteProjects.length} />
+        <MetricCard label="최근 본 항목" value={recentProjects.length} />
       </section>
 
-      <section className="surface-panel rounded-2xl p-4 sm:p-5">
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab('owned')}
-            className={`chip-filter ${activeTab === 'owned' ? 'chip-filter-active' : 'chip-filter-idle'}`}
-          >
-            내 프로젝트 ({ownedProjects.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('team')}
-            className={`chip-filter ${activeTab === 'team' ? 'chip-filter-active' : 'chip-filter-idle'}`}
-          >
-            같은 부서 ({sameDepartmentProjects.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('favorites')}
-            className={`chip-filter ${activeTab === 'favorites' ? 'chip-filter-active' : 'chip-filter-idle'}`}
-          >
-            즐겨찾기 ({favoriteProjects.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('recent')}
-            className={`chip-filter ${activeTab === 'recent' ? 'chip-filter-active' : 'chip-filter-idle'}`}
-          >
-            최근 조회 ({recentProjects.length})
-          </button>
+      <section className="page-toolbar-panel">
+        <div className="page-toolbar-row">
+          <div className="page-toggle-cluster">
+            {(['owned', 'team', 'favorites', 'recent'] as WorkspaceTab[]).map((tab) => {
+              const count =
+                tab === 'owned'
+                  ? ownedProjects.length
+                  : tab === 'team'
+                    ? sameDepartmentProjects.length
+                    : tab === 'favorites'
+                      ? favoriteProjects.length
+                      : recentProjects.length
+
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`page-toggle-button ${
+                    activeTab === tab ? 'page-toggle-button-active' : 'page-toggle-button-idle'
+                  }`}
+                >
+                  {WORKSPACE_TAB_LABELS[tab]}
+                  <span className="rounded-full bg-black/10 px-2 py-0.5 text-[11px] font-bold leading-none">
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="page-toolbar-note">
+            현재 탭 기준으로 최신성과 관심도를 함께 보여줍니다.
+          </p>
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <section className="page-card-grid">
         {currentList.map((project) => (
           <OpalProjectCard key={project.id} {...project} onClick={() => onProjectClick?.(project.id)} />
         ))}
         {currentList.length === 0 ? (
           <div className="empty-panel">
-            <p className="text-sm text-slate-600">이 섹션에는 표시할 프로젝트가 없습니다.</p>
+            <p className="text-sm text-slate-600">현재 섹션에 표시할 프로젝트가 없습니다.</p>
           </div>
         ) : null}
       </section>
 
-      <section className="space-y-3">
-        <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
-          <Sparkles className="h-5 w-5 text-slate-700" />
-          자주 쓰는 태그
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          {topTags.map(([tag, count]) => (
-            <span
-              key={tag}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
-            >
-              {tag} ({count})
+      <section className="project-section-shell">
+        <div className="project-section-head">
+          <div className="project-section-title-row">
+            <span className="project-section-icon">
+              <Sparkles className="h-5 w-5 text-slate-700" />
             </span>
+            <h2 className="project-section-title">자주 쓰는 태그</h2>
+          </div>
+          <Pill variant="subtle">상위 {topTags.length}개</Pill>
+        </div>
+        <div className="project-section-divider" aria-hidden="true" />
+        <div className="page-tag-cloud mt-5">
+          {topTags.map(([tag, count]) => (
+            <Pill key={tag} variant="subtle">
+              {tag} ({count})
+            </Pill>
           ))}
+          {topTags.length === 0 ? (
+            <span className="page-toolbar-note">아직 집계된 태그가 없습니다.</span>
+          ) : null}
         </div>
       </section>
-    </div>
+    </PageShell>
   )
 }

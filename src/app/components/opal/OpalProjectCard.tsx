@@ -47,31 +47,33 @@ export function OpalProjectCard({
   return (
     <div
       onClick={onClick}
-      className={`group relative cursor-pointer overflow-hidden rounded-[24px] border border-slate-200/85 bg-white/96 shadow-[0_8px_18px_rgba(17,37,56,0.06)] transition-[box-shadow,border-color] duration-200 hover:border-slate-300 hover:shadow-[0_14px_24px_rgba(14,33,51,0.1)] ${cardPaddingClass}`}
+      className={`opal-project-card group relative cursor-pointer overflow-hidden rounded-[24px] border border-slate-200/85 bg-white/96 shadow-[0_8px_18px_rgba(17,37,56,0.06)] transition-[box-shadow,border-color,transform] duration-200 hover:border-slate-300 hover:shadow-[0_14px_24px_rgba(14,33,51,0.1)] ${cardPaddingClass}`}
       style={{
         backdropFilter: 'blur(4px)',
       }}
     >
+      <div className="opal-project-card-glow" aria-hidden="true" />
+      <div className="opal-project-card-topline" aria-hidden="true" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-slate-200/90" />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-[11px] font-semibold tracking-[0.08em] text-slate-500">
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">{department}</span>
-        {createdAt ? <span className="rounded-full bg-slate-100 px-2.5 py-1">{createdAt}</span> : null}
+      <div className="opal-project-card-header">
+        <span className="opal-project-meta-pill">{department}</span>
+        {createdAt ? <span className="opal-project-meta-pill">{createdAt}</span> : null}
         {isNew ? (
-          <span className="rounded-full border border-sky-200 bg-sky-100/80 px-2.5 py-1 text-sky-800">
+          <span className="opal-project-meta-pill opal-project-meta-pill-emphasis">
             신규
           </span>
         ) : null}
       </div>
 
       <div className="mb-3 flex items-start justify-between gap-2">
-        <h3 className={`flex-1 font-semibold leading-tight text-slate-900 ${titleClass}`}>{title}</h3>
+        <h3 className={`opal-project-card-title ${titleClass}`}>{title}</h3>
       </div>
 
-      <p className={`leading-relaxed text-slate-600 ${descriptionClass}`}>{description}</p>
+      <p className={`opal-project-card-description ${descriptionClass}`}>{description}</p>
 
       {tags && tags.length > 0 ? (
-        <div className={tagBlockClass}>
+        <div className={`opal-project-card-tags ${tagBlockClass}`}>
           {tags.slice(0, 4).map((tag) => (
             <OpalTag key={tag} size="sm" variant="primary" category={tag}>
               {tag}
@@ -81,14 +83,14 @@ export function OpalProjectCard({
         </div>
       ) : null}
 
-      <div className={metaTopClass}>
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm">
-          <span className="font-medium">{author}</span>
+      <div className={`opal-project-card-footer ${metaTopClass}`}>
+        <div className="opal-project-card-author">
+          <span className="opal-project-card-author-name">{author}</span>
           <span>&middot;</span>
           <span>{department} 담당</span>
         </div>
 
-        <div className={`rounded-2xl bg-slate-50/85 px-3 py-3 ${statsClass}`}>
+        <div className={`opal-project-card-stats rounded-2xl px-3 py-3 ${statsClass}`}>
           {views !== undefined ? (
             <div className="flex items-center gap-1.5 text-slate-500">
               <Eye className="h-4 w-4" strokeWidth={1.5} />

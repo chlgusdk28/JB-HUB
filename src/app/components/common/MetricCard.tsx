@@ -7,9 +7,16 @@ interface MetricCardProps {
 
 export function MetricCard({ label, value, className = '', valueClassName = '' }: MetricCardProps) {
   return (
-    <div className={`surface-soft fade-up rounded-2xl px-4 py-4 ${className}`}>
-      <p className="text-[11px] font-semibold tracking-[0.06em] text-slate-500">{label}</p>
-      <p className={`mt-1 truncate text-2xl font-bold text-slate-900 ${valueClassName}`}>{value}</p>
+    <div className={`metric-card surface-soft fade-up ${className}`}>
+      <div className="metric-card-head">
+        <p className="metric-card-label">{label}</p>
+        <span className="metric-card-dot" aria-hidden="true" />
+      </div>
+      <p className={`metric-card-value ${valueClassName}`}>{value}</p>
+      <div className="metric-card-foot" aria-hidden="true">
+        <span className="metric-card-footline" />
+        <span className="metric-card-footline metric-card-footline-short" />
+      </div>
     </div>
   )
 }

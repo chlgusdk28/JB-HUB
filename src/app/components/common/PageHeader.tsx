@@ -24,17 +24,21 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <header className={cn('page-header-card', className)}>
-      <div className="page-header-stack">
-        <div className="page-header-copy">
-          {eyebrow ? <div className="page-header-eyebrow">{eyebrow}</div> : null}
-          <h1 className={cn('page-header-title', titleClassName)}>{title}</h1>
-          {description ? (
-            <p className={cn('page-header-description', descriptionClassName)}>{description}</p>
-          ) : null}
+      <div className="page-header-glow page-header-glow-left" aria-hidden="true" />
+      <div className="page-header-glow page-header-glow-right" aria-hidden="true" />
+      <div className="page-header-grid">
+        <div className="page-header-stack">
+          <div className="page-header-copy">
+            {eyebrow ? <div className="page-header-eyebrow">{eyebrow}</div> : null}
+            <h1 className={cn('page-header-title', titleClassName)}>{title}</h1>
+            {description ? (
+              <p className={cn('page-header-description', descriptionClassName)}>{description}</p>
+            ) : null}
+          </div>
+          {actions ? <div className="page-header-actions">{actions}</div> : null}
         </div>
-        {actions ? <div className="page-header-actions">{actions}</div> : null}
+        {meta ? <div className="page-header-meta">{meta}</div> : null}
       </div>
-      {meta ? <div className="page-header-meta">{meta}</div> : null}
     </header>
   )
 }

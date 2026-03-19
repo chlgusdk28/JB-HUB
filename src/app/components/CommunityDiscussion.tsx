@@ -5,7 +5,7 @@ import {
   type DiscussionCategory,
   type DiscussionPost,
 } from '../data/discussions'
-import { PageHeader, PageShell, Pill } from './common'
+import { MetricCard, PageHeader, PageShell, Pill } from './common'
 import { OpalCard } from './opal/OpalCard'
 import { OpalTag } from './opal/OpalTag'
 
@@ -54,6 +54,11 @@ export function CommunityDiscussion({
   const [summaryInput, setSummaryInput] = useState('')
   const [categoryInput, setCategoryInput] = useState<DiscussionCategory>('Question')
   const [tagsInput, setTagsInput] = useState('')
+  const hotDiscussionCount = useMemo(() => discussions.filter((discussion) => discussion.isHot).length, [discussions])
+  const activeCategoryCount =
+    selectedCategory === 'All'
+      ? discussions.length
+      : discussions.filter((discussion) => discussion.category === selectedCategory).length
 
   const filteredDiscussions = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase()
@@ -81,6 +86,13 @@ export function CommunityDiscussion({
     }
     return [...filtered].sort((a, b) => b.id - a.id)
   }, [discussions, keyword, selectedCategory, showHotOnly, sortBy])
+
+  const summaryMetrics = [
+    { key: 'total', label: '전체 토론', value: discussions.length },
+    { key: 'hot', label: '인기글', value: hotDiscussionCount },
+    { key: 'category', label: '카테고리 결과', value: activeCategoryCount },
+    { key: 'filtered', label: '현재 표시', value: filteredDiscussions.length },
+  ]
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -131,8 +143,14 @@ export function CommunityDiscussion({
         }
       />
 
-      <section className="surface-panel rounded-2xl p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <section className="page-metric-grid">
+        {summaryMetrics.map((metric) => (
+          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
+        ))}
+      </section>
+
+      <section className="page-toolbar-panel page-toolbar-stack">
+        <div className="page-toolbar-row">
           <div className="action-row action-row-scroll">
             <button
               type="button"
@@ -163,8 +181,8 @@ export function CommunityDiscussion({
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="relative w-full sm:w-72">
+          <div className="page-toolbar-cluster">
+            <div className="page-input-shell">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={keyword}
@@ -183,40 +201,46 @@ export function CommunityDiscussion({
             </button>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 p-1">
-            <button
-              type="button"
-              onClick={() => setSortBy('latest')}
-              className={`chip-filter ${sortBy === 'latest' ? 'chip-filter-active' : 'chip-filter-idle'} !px-2.5 !py-1`}
-            >
-              최신순
-            </button>
-            <button
-              type="button"
-              onClick={() => setSortBy('popular')}
-              className={`chip-filter ${sortBy === 'popular' ? 'chip-filter-active' : 'chip-filter-idle'} !px-2.5 !py-1`}
-            >
-              인기순
-            </button>
+        <div className="page-toolbar-row">
+          <div className="page-toolbar-cluster">
+            <div className="page-toggle-cluster">
+              <button
+                type="button"
+                onClick={() => setSortBy('latest')}
+                className={`page-toggle-button ${sortBy === 'latest' ? 'page-toggle-button-active' : 'page-toggle-button-idle'}`}
+              >
+                최신순
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortBy('popular')}
+                className={`page-toggle-button ${sortBy === 'popular' ? 'page-toggle-button-active' : 'page-toggle-button-idle'}`}
+              >
+                인기순
+              </button>
+            </div>
+            <div className="page-toggle-cluster">
+              <button
+                type="button"
+                onClick={() => setDiscussionDensity('comfortable')}
+                className={`page-toggle-button ${
+                  discussionDensity === 'comfortable' ? 'page-toggle-button-active' : 'page-toggle-button-idle'
+                }`}
+              >
+                넓게
+              </button>
+              <button
+                type="button"
+                onClick={() => setDiscussionDensity('compact')}
+                className={`page-toggle-button ${
+                  discussionDensity === 'compact' ? 'page-toggle-button-active' : 'page-toggle-button-idle'
+                }`}
+              >
+                컴팩트
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 p-1">
-            <button
-              type="button"
-              onClick={() => setDiscussionDensity('comfortable')}
-              className={`chip-filter ${discussionDensity === 'comfortable' ? 'chip-filter-active' : 'chip-filter-idle'} !px-2.5 !py-1`}
-            >
-              넓게
-            </button>
-            <button
-              type="button"
-              onClick={() => setDiscussionDensity('compact')}
-              className={`chip-filter ${discussionDensity === 'compact' ? 'chip-filter-active' : 'chip-filter-idle'} !px-2.5 !py-1`}
-            >
-              컴팩트
-            </button>
-          </div>
-          <span className="text-xs text-slate-500">총 {filteredDiscussions.length}개 글</span>
+          <span className="page-toolbar-note">총 {filteredDiscussions.length}개 글</span>
         </div>
 
         {showComposer ? (
@@ -262,7 +286,7 @@ export function CommunityDiscussion({
         ) : null}
       </section>
 
-      <section className="space-y-4">
+      <section className="page-list-stack">
         {filteredDiscussions.map((discussion) => (
           <OpalCard
             key={discussion.id}
