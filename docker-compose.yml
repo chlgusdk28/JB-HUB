@@ -4,11 +4,11 @@ services:
     container_name: jbhub-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: jbhub
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-jbhub}
       TZ: Asia/Seoul
     ports:
-      - "3310:3306"
+      - "${DB_PORT:-3310}:3306"
     volumes:
       - jbhub_mysql_data:/var/lib/mysql
     healthcheck:

@@ -14,6 +14,7 @@ import {
   Settings,
   Trophy,
   User,
+  Wrench,
 } from 'lucide-react'
 import { HomePageView, type SummaryMetricItem } from './app/HomePageView'
 import { ExplorePageView, type ActiveFilterChip } from './app/ExplorePageView'
@@ -32,6 +33,7 @@ import { UserAchievements } from './user/UserAchievements'
 import { UserDashboard } from './user/UserDashboard'
 import { ProjectRoadmap } from './user/ProjectRoadmap'
 import { UserSettings } from './user/UserSettings'
+import { ToolsPage } from './ToolsPage'
 import { useToast } from './ToastProvider'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { createProject, fetchProjects } from '../lib/projects-api'
@@ -47,6 +49,7 @@ type PageId =
   | 'knowledge'
   | 'gallery'
   | 'collections'
+  | 'tools'
   | 'achievements'
   | 'roadmap'
   | 'org-chart'
@@ -869,6 +872,10 @@ export default function RestoredHubApp() {
       return <ProjectCollections projects={projects as never} onProjectClick={openProject} />
     }
 
+    if (page === 'tools') {
+      return <ToolsPage />
+    }
+
     if (page === 'achievements') {
       return (
         <div className="page-shell">
@@ -930,6 +937,7 @@ export default function RestoredHubApp() {
       items: [
         { id: 'gallery', label: '갤러리', icon: <Image className="h-4 w-4" /> },
         { id: 'collections', label: '컬렉션', icon: <FolderGit2 className="h-4 w-4" />, badge: favoriteProjects.length },
+        { id: 'tools', label: 'Tools', icon: <Wrench className="h-4 w-4" /> },
         { id: 'achievements', label: '업적', icon: <Trophy className="h-4 w-4" /> },
         { id: 'roadmap', label: '로드맵', icon: <MapIcon className="h-4 w-4" /> },
         { id: 'org-chart', label: '조직도', icon: <Building2 className="h-4 w-4" /> },
@@ -949,6 +957,7 @@ export default function RestoredHubApp() {
     knowledge: '지식 문서와 활용 노트를 모아 검색 가능한 허브로 제공합니다.',
     gallery: '프로젝트를 시각적으로 훑어보며 빠르게 비교합니다.',
     collections: '즐겨찾기와 큐레이션을 기반으로 개인 컬렉션을 관리합니다.',
+    tools: '다른 프로젝트에서 가져온 기능과 개인용 업무 도구를 한곳에서 관리합니다.',
     achievements: '활동 기록을 업적과 경험치 중심으로 추적합니다.',
     roadmap: '핵심 프로젝트의 추진 흐름과 다음 작업을 정리합니다.',
     'org-chart': '부서와 담당 영역을 조직 구조 중심으로 확인합니다.',

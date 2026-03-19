@@ -27,6 +27,7 @@ import {
   createSiteContentPublicRouter,
   ensureSiteContentSchema,
 } from './site-content.js'
+import { createToolsRouter } from './tools-api.js'
 
 function readEnvString(key, fallback = '') {
   const value = process.env[key]
@@ -628,6 +629,12 @@ function maskIpAddress(ip) {
 function logSecurityEvent(event, details) {
   const timestamp = new Date().toISOString()
   console.error('[SECURITY]', timestamp, event, JSON.stringify(details))
+}
+
+function buildAttachmentContentDisposition(fileName) {
+  const safeName = String(fileName ?? 'download').replace(/[\\/]/g, '_')
+  const asciiFallback = safeName.replace(/[^\x20-\x7E]/g, '_')
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(safeName)}`
 }
 
 // ========================================
@@ -3833,7 +3840,12 @@ async function start() {
   app.use((req, res, next) => {
     const contentLength = parseInt(req.get('content-length') || '0', 10)
     const isDockerUploadRoute = typeof req.path === 'string' && req.path.includes('/docker/')
-    const MAX_SIZE = isDockerUploadRoute ? 1536 * 1024 * 1024 : 2 * 1024 * 1024
+    const isToolsUploadRoute = typeof req.path === 'string' && req.path.includes('/tools/')
+    const MAX_SIZE = isDockerUploadRoute
+      ? 1536 * 1024 * 1024
+      : isToolsUploadRoute
+        ? 64 * 1024 * 1024
+        : 2 * 1024 * 1024
     if (contentLength > MAX_SIZE) {
       return res.status(413).json({
         error: 'Request entity too large',
@@ -3958,6 +3970,7 @@ async function start() {
     createAuditLog,
   }))
   v1Router.use(createSiteContentPublicRouter(pool, { handleApiError }))
+  v1Router.use('/tools', createToolsRouter())
 
   // Projects endpoints
   v1Router.get('/projects', async (req, res) => {
@@ -4173,7 +4186,12 @@ async function start() {
         return
       }
 
-      res.download(target.absolutePath, path.basename(target.absolutePath))
+      const downloadName = path.basename(target.absolutePath)
+      res.setHeader('Content-Disposition', buildAttachmentContentDisposition(downloadName))
+      res.setHeader('Content-Length', String(stats.size))
+      res.setHeader('Cache-Control', 'no-store')
+      res.type(downloadName)
+      res.sendFile(target.absolutePath)
     } catch (error) {
       if (error?.code === 'ENOENT') {
         res.status(404).json({ error: 'File not found.', requestId: req.requestId })

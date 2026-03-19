@@ -1,14 +1,28 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import fileUpload from 'express-fileupload'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { seedProjects } from './seed-projects.js'
+import { createToolsRouter } from './tools-api.js'
 
 const API_PORT = Number.parseInt(process.env.API_PORT || '8787', 10)
 const app = express()
+const UPLOAD_TEMP_DIR = join(process.cwd(), 'upload-temp')
+
+mkdirSync(UPLOAD_TEMP_DIR, { recursive: true })
 
 // Middleware
 app.use(cors())
+app.use(fileUpload({
+  createParentPath: true,
+  abortOnLimit: true,
+  limits: { fileSize: 64 * 1024 * 1024 },
+  useTempFiles: true,
+  tempFileDir: UPLOAD_TEMP_DIR,
+}))
 app.use(express.json())
 
 // In-memory data store
@@ -88,6 +102,8 @@ app.get('/api/v1/health', (_req, res) => {
 app.get('/api/v1/site-content', (_req, res) => {
   res.json(siteContent)
 })
+
+app.use('/api/v1/tools', createToolsRouter())
 
 // Get all projects
 app.get('/api/v1/projects', (_req, res) => {

@@ -8,7 +8,9 @@ import jwt from 'jsonwebtoken'
 import express from 'express'
 import cors from 'cors'
 import compression from 'compression'
+import fileUpload from 'express-fileupload'
 import helmet from 'helmet'
+import { createToolsRouter } from './tools-api.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DB_PATH = join(process.cwd(), 'data', 'jbhub.db')
@@ -18,6 +20,7 @@ mkdirSync(join(process.cwd(), 'data'), { recursive: true })
 mkdirSync(join(process.cwd(), 'project-files'), { recursive: true })
 mkdirSync(join(process.cwd(), 'docker-uploads'), { recursive: true })
 mkdirSync(join(process.cwd(), 'docker-temp'), { recursive: true })
+mkdirSync(join(process.cwd(), 'upload-temp'), { recursive: true })
 
 // 환경 변수
 const API_PORT = Number(process.env.API_PORT) || 8787
@@ -36,6 +39,13 @@ app.use(helmet({
 app.use(cors({
   origin: CORS_ORIGINS,
   credentials: true
+}))
+app.use(fileUpload({
+  createParentPath: true,
+  abortOnLimit: true,
+  limits: { fileSize: 64 * 1024 * 1024 },
+  useTempFiles: true,
+  tempFileDir: join(process.cwd(), 'upload-temp'),
 }))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
@@ -227,6 +237,8 @@ app.get('/api/v1/site-content', (_req, res) => {
   })
   res.json(content)
 })
+
+app.use('/api/v1/tools', createToolsRouter())
 
 // 관리자 로그인
 app.post('/api/admin/login', (req, res) => {
