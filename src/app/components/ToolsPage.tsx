@@ -36,7 +36,7 @@ interface SelectionRect {
 }
 
 const TOOL_TABS: Array<{ id: ToolTabId; label: string; description: string }> = [
-  { id: 'ocr', label: 'OCR 작업실', description: 'codexP 문서 OCR 기능을 허브 안에서 바로 실행합니다.' },
+  { id: 'ocr', label: 'OCR 작업실', description: '문서 이미지를 바로 분석해 텍스트를 추출합니다.' },
   { id: 'image', label: '이미지 변환', description: '이미지 확장자를 빠르게 변환해 다운로드합니다.' },
   { id: 'pdf', label: 'PDF 도구', description: '페이지 수 확인, 페이지 자르기, 가벼운 최적화를 수행합니다.' },
 ]
@@ -302,12 +302,12 @@ export function ToolsPage() {
     () => [
       {
         title: '문서 OCR',
-        description: 'codexP의 OCR 흐름을 가져와 이미지에서 텍스트를 뽑고 결과를 바로 복사할 수 있게 구성했습니다.',
+        description: '이미지에서 텍스트를 뽑고 결과를 바로 복사할 수 있게 구성했습니다.',
         icon: Sparkles,
       },
       {
         title: '이미지 변환',
-        description: '운영 중 자주 쓰는 확장자 변환을 `Tools` 안으로 옮겨와 별도 앱 없이 처리할 수 있습니다.',
+        description: '운영 중 자주 쓰는 확장자 변환을 `Tools` 안에서 바로 처리할 수 있습니다.',
         icon: Image,
       },
       {
@@ -422,12 +422,12 @@ export function ToolsPage() {
           <div className="max-w-3xl space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
               <Sparkles className="h-3.5 w-3.5" />
-              Imported From codexP
+              Tools Workspace
             </div>
-            <h2 className="text-2xl font-semibold tracking-tight text-slate-900">codexP 도구를 허브 안으로 옮긴 작업실</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-slate-900">허브 안에서 바로 쓰는 작업 도구 모음</h2>
             <p className="text-sm leading-6 text-slate-600">
-              이전 프로젝트에서 만들었던 OCR과 파일 유틸리티 흐름을 `Tools` 메뉴 안으로 옮겨왔습니다.
-              별도 앱을 켜지 않고 허브 안에서 바로 실행하고 다운로드할 수 있게 다시 구성했습니다.
+              OCR과 파일 유틸리티를 `Tools` 메뉴 안에서 바로 실행하고 다운로드할 수 있게 구성했습니다.
+              별도 화면으로 이동하지 않고 허브 안에서 바로 작업할 수 있습니다.
             </p>
           </div>
 
@@ -560,7 +560,7 @@ export function ToolsPage() {
             <div className="space-y-2">
               <h3 className="text-lg font-semibold text-slate-900">미리보기와 결과</h3>
               <p className="text-sm leading-6 text-slate-600">
-                미리보기에서 드래그하면 영역 선택이 저장됩니다. 선택 영역 OCR은 해당 부분만 잘라 서버에 보내도록 옮겨왔습니다.
+                미리보기에서 드래그하면 영역 선택이 저장됩니다. 선택 영역 OCR은 해당 부분만 잘라 서버로 보내 처리합니다.
               </p>
             </div>
 
@@ -668,7 +668,7 @@ export function ToolsPage() {
               </div>
               <div>
                 <h3 className="text-xl font-semibold text-slate-900">이미지 확장자 변환</h3>
-                <p className="text-sm text-slate-600">codexP의 이미지 변환 기능을 허브 안에서 다운로드형 도구로 옮겼습니다.</p>
+                <p className="text-sm text-slate-600">이미지 확장자를 바꿔 바로 다운로드할 수 있는 도구입니다.</p>
               </div>
             </div>
 
@@ -717,10 +717,9 @@ export function ToolsPage() {
 
           <div className="space-y-4 rounded-[30px] border border-slate-200/80 bg-white/86 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)]">
             <div className="rounded-[28px] border border-slate-200 bg-slate-50/90 p-5">
-              <h4 className="text-lg font-semibold text-slate-900">현재 가져온 흐름</h4>
+              <h4 className="text-lg font-semibold text-slate-900">현재 구성</h4>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                이전 프로젝트의 파일 도구 중 이미지 변환 흐름을 그대로 가져와, 허브에서는 선택한 형식으로 바로 다운로드하는
-                단일 액션으로 단순화했습니다.
+                이미지 파일을 선택한 형식으로 변환한 뒤 바로 다운로드하는 단일 흐름으로 구성했습니다.
               </p>
             </div>
 
@@ -836,10 +835,10 @@ export function ToolsPage() {
 
           <div className="space-y-4 rounded-[30px] border border-slate-200/80 bg-white/86 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)]">
             <div className="rounded-[28px] border border-slate-200 bg-slate-50/90 p-5">
-              <h4 className="text-lg font-semibold text-slate-900">이관 메모</h4>
+              <h4 className="text-lg font-semibold text-slate-900">구성 메모</h4>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                `codexP`의 PDF 도구 흐름을 허브에 맞게 다시 묶었습니다. 현재 버전은 페이지 자르기와 페이지 수 확인을 우선 살렸고,
-                최적화는 불필요한 구조를 덜어내는 가벼운 재저장 방식으로 옮겨왔습니다.
+                현재 버전은 페이지 자르기와 페이지 수 확인을 중심으로 구성했고,
+                최적화는 불필요한 구조를 덜어내는 가벼운 재저장 방식으로 동작합니다.
               </p>
             </div>
 
