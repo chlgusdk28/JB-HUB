@@ -2128,6 +2128,8 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
          const definitionName = String(deploymentRow.definition_name ?? '')
          const definitionDir = getProjectContainerDirectory(Number(deploymentRow.project_id), definitionName)
          const composeFileName = findComposeFileName(definitionDir)
+         const metadata = await readContainerMetadata(definitionDir)
+         const metadataRun = metadata.data?.run ?? {}
          if (!composeFileName) {
            return res.status(400).json({ error: 'Compose file could not be found for this deployment.' })
          }
@@ -2141,9 +2143,15 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
              composeFileAbsolutePath: path.join(definitionDir, composeFileName),
              uploaderName: String(deploymentRow.uploader_name ?? ''),
              previewContainerPort: resolveNumericPort(deploymentRow.container_port),
-             previewServiceName: null,
-             healthcheckPath: null,
-             readinessTimeoutSec: null,
+             previewServiceName:
+               typeof metadataRun.previewService === 'string' && metadataRun.previewService.trim()
+                 ? metadataRun.previewService.trim()
+                 : null,
+             healthcheckPath:
+               typeof metadataRun.healthcheckPath === 'string' && metadataRun.healthcheckPath.trim()
+                 ? metadataRun.healthcheckPath.trim()
+                 : null,
+             readinessTimeoutSec: resolveNumericPort(metadataRun.readinessTimeoutSec),
            }),
          })
        }
