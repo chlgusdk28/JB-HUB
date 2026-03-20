@@ -511,14 +511,46 @@ function serializeBuildJob(row) {
   }
 }
 
-function serializeDeployment(row) {
+function buildContainerPreviewPath(deploymentToken, serviceName = null) {
+  const basePath = `/api/v1/container-previews/${encodeURIComponent(String(deploymentToken ?? ''))}`
+  if (typeof serviceName === 'string' && serviceName.trim()) {
+    return `${basePath}/services/${encodeURIComponent(serviceName.trim())}/`
+  }
+
+  return `${basePath}/`
+}
+
+function serializeServiceEndpoint({
+  deploymentToken,
+  serviceName = null,
+  containerPort = null,
+  hostPort = null,
+  isPrimary = false,
+}) {
+  const normalizedHostPort = resolveNumericPort(hostPort)
+  const normalizedContainerPort = resolveNumericPort(containerPort)
+  const normalizedServiceName =
+    typeof serviceName === 'string' && serviceName.trim() ? serviceName.trim() : null
+
+  return {
+    serviceName: normalizedServiceName,
+    containerPort: normalizedContainerPort,
+    hostPort: normalizedHostPort,
+    endpointUrl: normalizedHostPort ? `http://${DOCKER_PREVIEW_HOST}:${normalizedHostPort}` : null,
+    sitePreviewUrl: deploymentToken ? buildContainerPreviewPath(deploymentToken, normalizedServiceName) : null,
+    isPrimary: Boolean(isPrimary),
+  }
+}
+
+function serializeDeployment(row, { serviceEndpoints = [] } = {}) {
+  const deploymentToken = row.deployment_id ? String(row.deployment_id) : String(row.id)
   const hostPort = resolveNumericPort(row.host_port)
   return {
     id: Number(row.id),
     projectId: Number(row.project_id),
     buildJobId: Number.isFinite(Number(row.build_job_id)) ? Number(row.build_job_id) : null,
     definitionName: row.definition_name ? String(row.definition_name) : '',
-    deploymentToken: row.deployment_id ? String(row.deployment_id) : String(row.id),
+    deploymentToken,
     uploaderName: row.uploader_name ? String(row.uploader_name) : '',
     containerName: row.container_name ? String(row.container_name) : null,
     containerId: row.container_id ? String(row.container_id) : null,
@@ -527,7 +559,8 @@ function serializeDeployment(row) {
     imageReference: row.image_reference ? String(row.image_reference) : null,
     status: row.status ? String(row.status) : 'stopped',
     endpointUrl: row.endpoint_url ? String(row.endpoint_url) : hostPort ? `http://${DOCKER_PREVIEW_HOST}:${hostPort}` : null,
-    sitePreviewUrl: row.deployment_id ? `/api/v1/container-previews/${row.deployment_id}/` : null,
+    sitePreviewUrl: buildContainerPreviewPath(deploymentToken),
+    serviceEndpoints: Array.isArray(serviceEndpoints) ? serviceEndpoints : [],
     errorMessage: row.error_message ? String(row.error_message) : null,
     runOutput: row.run_output ? String(row.run_output) : null,
     createdAt: row.created_at ? String(row.created_at) : null,
@@ -654,13 +687,13 @@ async function scanProjectContainerDefinitions(projectId, db) {
     jobsByDefinition.set(definitionName, serializeBuildJob(row))
   }
 
-  const deploymentsByDefinition = new Map()
+  const deploymentRowsByDefinition = new Map()
   for (const row of db.prepare('SELECT * FROM docker_deployments WHERE project_id = ? ORDER BY id DESC').all(projectId)) {
     const definitionName = String(row.definition_name ?? '')
-    if (!definitionName || deploymentsByDefinition.has(definitionName)) {
+    if (!definitionName || deploymentRowsByDefinition.has(definitionName)) {
       continue
     }
-    deploymentsByDefinition.set(definitionName, serializeDeployment(row))
+    deploymentRowsByDefinition.set(definitionName, row)
   }
 
   const definitions = []
@@ -725,7 +758,9 @@ async function scanProjectContainerDefinitions(projectId, db) {
       files,
       warnings,
       lastBuildJob: jobsByDefinition.get(definitionName) ?? null,
-      activeDeployment: deploymentsByDefinition.get(definitionName) ?? null,
+      activeDeployment: deploymentRowsByDefinition.has(definitionName)
+        ? await enrichDeploymentRow(deploymentRowsByDefinition.get(definitionName))
+        : null,
     })
   }
 
@@ -1192,6 +1227,152 @@ function resolveComposePublishedPort(psEntries, { preferredServiceName, preferre
   return findPublishedPort(psEntries)
 }
 
+function buildComposeServiceEndpoints(
+  psEntries,
+  { deploymentToken, preferredServiceName, preferredTargetPort, preferredHostPort } = {},
+) {
+  const normalizedPreferredService = normalizeComposeServiceName(preferredServiceName)
+  const normalizedPreferredTargetPort = resolveNumericPort(preferredTargetPort)
+  const normalizedPreferredHostPort = resolveNumericPort(preferredHostPort)
+  const endpointMap = new Map()
+
+  for (const entry of Array.isArray(psEntries) ? psEntries : []) {
+    const serviceName = typeof entry?.Service === 'string' && entry.Service.trim() ? entry.Service.trim() : null
+    const publishers = Array.isArray(entry?.Publishers) ? entry.Publishers : []
+
+    for (const publisher of publishers) {
+      const protocol = typeof publisher?.Protocol === 'string' ? publisher.Protocol.trim().toLowerCase() : 'tcp'
+      if (protocol && protocol !== 'tcp') {
+        continue
+      }
+
+      const hostPort = resolveNumericPort(publisher?.PublishedPort)
+      if (!hostPort) {
+        continue
+      }
+
+      const containerPort = resolveNumericPort(publisher?.TargetPort)
+      const normalizedServiceName = normalizeComposeServiceName(serviceName)
+      const key = `${normalizedServiceName || 'service'}:${containerPort || 'port'}:${hostPort}`
+      if (endpointMap.has(key)) {
+        continue
+      }
+
+      const isPrimary =
+        (normalizedPreferredService && normalizedServiceName === normalizedPreferredService) ||
+        (normalizedPreferredTargetPort && containerPort === normalizedPreferredTargetPort) ||
+        (normalizedPreferredHostPort && hostPort === normalizedPreferredHostPort)
+
+      endpointMap.set(
+        key,
+        serializeServiceEndpoint({
+          deploymentToken,
+          serviceName,
+          containerPort,
+          hostPort,
+          isPrimary,
+        }),
+      )
+    }
+  }
+
+  return Array.from(endpointMap.values()).sort((left, right) => {
+    const leftPrimary = left.isPrimary ? 1 : 0
+    const rightPrimary = right.isPrimary ? 1 : 0
+    if (leftPrimary !== rightPrimary) {
+      return rightPrimary - leftPrimary
+    }
+
+    const leftScore = scoreComposeServiceForPreview(left.serviceName || '', [{ target: left.containerPort }], normalizedPreferredTargetPort).score
+    const rightScore = scoreComposeServiceForPreview(right.serviceName || '', [{ target: right.containerPort }], normalizedPreferredTargetPort).score
+    if (leftScore !== rightScore) {
+      return rightScore - leftScore
+    }
+
+    const leftName = left.serviceName || ''
+    const rightName = right.serviceName || ''
+    const nameComparison = leftName.localeCompare(rightName, 'en', { numeric: true })
+    if (nameComparison !== 0) {
+      return nameComparison
+    }
+
+    return (left.hostPort ?? 0) - (right.hostPort ?? 0)
+  })
+}
+
+async function readComposePsEntriesForDeployment(deploymentRow) {
+  const imageReference = String(deploymentRow.image_reference ?? '')
+  if (!imageReference.startsWith('compose:')) {
+    return []
+  }
+
+  const definitionName = String(deploymentRow.definition_name ?? '')
+  const definitionDir = getProjectContainerDirectory(Number(deploymentRow.project_id), definitionName)
+  const composeFileName = findComposeFileName(definitionDir)
+  if (!composeFileName) {
+    return []
+  }
+
+  const composeProjectName = deploymentRow.container_name || imageReference.slice('compose:'.length)
+  const composeFileAbsolutePath = path.join(definitionDir, composeFileName)
+  const psResult = await runLoggedProcess(
+    'docker',
+    ['compose', '-p', composeProjectName, '-f', composeFileAbsolutePath, 'ps', '--format', 'json'],
+    {
+      cwd: path.dirname(composeFileAbsolutePath),
+      logPath: null,
+      timeoutMs: 30000,
+    },
+  )
+
+  if (psResult.exitCode !== 0) {
+    return []
+  }
+
+  return parseComposePsOutput(psResult.output)
+}
+
+async function enrichDeploymentRow(deploymentRow, { preferredServiceName, preferredTargetPort } = {}) {
+  const deployment = serializeDeployment(deploymentRow)
+  const imageReference = String(deploymentRow.image_reference ?? '')
+  const deploymentToken = deployment.deploymentToken
+
+  if (imageReference.startsWith('compose:') && deployment.status === 'running') {
+    try {
+      const psEntries = await readComposePsEntriesForDeployment(deploymentRow)
+      const serviceEndpoints = buildComposeServiceEndpoints(psEntries, {
+        deploymentToken,
+        preferredServiceName,
+        preferredTargetPort: resolveNumericPort(preferredTargetPort) ?? resolveNumericPort(deploymentRow.container_port),
+        preferredHostPort: resolveNumericPort(deploymentRow.host_port),
+      })
+
+      if (serviceEndpoints.length > 0) {
+        return serializeDeployment(deploymentRow, { serviceEndpoints })
+      }
+    } catch {
+      // Ignore compose inspection errors and fall back to the stored endpoint.
+    }
+  }
+
+  const fallbackServiceEndpoints =
+    deployment.endpointUrl || deployment.sitePreviewUrl
+      ? [
+          serializeServiceEndpoint({
+            deploymentToken,
+            serviceName: imageReference.startsWith('compose:') ? null : 'app',
+            containerPort: resolveNumericPort(deploymentRow.container_port),
+            hostPort: resolveNumericPort(deploymentRow.host_port),
+            isPrimary: true,
+          }),
+        ]
+      : []
+
+  return serializeDeployment(deploymentRow, {
+    serviceEndpoints: fallbackServiceEndpoints.filter((entry) => entry.endpointUrl || entry.sitePreviewUrl),
+  })
+}
+
 function resolvePublishedPortFromDockerPortOutput(text) {
   const match = String(text ?? '').match(/:(\d{2,5})\s*$/m)
   return match ? resolveNumericPort(match[1]) : null
@@ -1403,7 +1584,7 @@ async function runDockerPreview({
        WHERE id = ?`,
     ).run('running', deploymentId, hostPort, jobId)
 
-    return serializeDeployment(db.prepare('SELECT * FROM docker_deployments WHERE id = ?').get(deploymentId))
+    return await enrichDeploymentRow(db.prepare('SELECT * FROM docker_deployments WHERE id = ?').get(deploymentId))
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Container failed to start.'
     db.prepare(
@@ -1565,7 +1746,10 @@ async function runDockerComposePreview({
        WHERE id = ?`,
     ).run('running', deploymentId, hostPort, imageReference, jobId)
 
-    return serializeDeployment(db.prepare('SELECT * FROM docker_deployments WHERE id = ?').get(deploymentId))
+    return await enrichDeploymentRow(db.prepare('SELECT * FROM docker_deployments WHERE id = ?').get(deploymentId), {
+      preferredServiceName: selectedPreviewServiceName,
+      preferredTargetPort: previewTargetPort,
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Compose stack failed to start.'
     db.prepare(
@@ -1831,7 +2015,12 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         docker: await getDockerRuntimeStatus(),
         definitions: await scanProjectContainerDefinitions(projectId, db),
         buildJobs: db.prepare('SELECT * FROM docker_build_jobs WHERE project_id = ? ORDER BY id DESC LIMIT 20').all(projectId).map(serializeBuildJob),
-        deployments: db.prepare('SELECT * FROM docker_deployments WHERE project_id = ? ORDER BY id DESC LIMIT 20').all(projectId).map(serializeDeployment),
+        deployments: await Promise.all(
+          db
+            .prepare('SELECT * FROM docker_deployments WHERE project_id = ? ORDER BY id DESC LIMIT 20')
+            .all(projectId)
+            .map((row) => enrichDeploymentRow(row)),
+        ),
       })
     } catch (error) {
       return next(error)
