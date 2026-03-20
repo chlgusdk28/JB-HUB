@@ -19,6 +19,7 @@ const CONTAINER_ROOT_DIR = 'containers'
 const DOCKER_PREVIEW_HOST = String(process.env.DOCKER_PREVIEW_HOST || '127.0.0.1').trim() || '127.0.0.1'
 const COMPOSE_FILE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']
 const CONTAINER_META_FILE_NAMES = ['jbhub.container.json', 'jbhub.container.yml', 'jbhub.container.yaml']
+const COMPOSE_PREVIEW_HTTP_PORTS = [80, 443, 3000, 4173, 4200, 5173, 8000, 8080, 8888]
 const CONTAINER_META_FILE_NAME_SET = new Set(CONTAINER_META_FILE_NAMES.map((fileName) => fileName.toLowerCase()))
 const CONTAINER_ALLOWED_HIDDEN_FILES = new Set(['.dockerignore', '.env.example', '.gitignore'])
 const CONTAINER_RESTRICTED_PATH_SEGMENTS = new Set(['.aws', '.git', '.hg', '.kube', '.ssh', '.svn'])
@@ -117,6 +118,10 @@ function slugifyName(value, fallback = 'container') {
     .replace(/^-+|-+$/g, '')
 
   return normalized || fallback
+}
+
+function normalizeComposeServiceName(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
 }
 
 function getProjectDirectory(projectId) {
@@ -933,11 +938,112 @@ function collectPreviewComposePorts(serviceConfig, previewContainerPort) {
   return fallbackPort ? [{ target: fallbackPort, protocol: 'tcp' }] : null
 }
 
+function choosePreviewTargetPort(ports, previewContainerPort) {
+  if (!Array.isArray(ports) || ports.length === 0) {
+    return resolveNumericPort(previewContainerPort)
+  }
+
+  const requestedPort = resolveNumericPort(previewContainerPort)
+  if (requestedPort) {
+    const requestedMatch = ports.find((entry) => resolveNumericPort(entry?.target) === requestedPort)
+    if (requestedMatch) {
+      return requestedPort
+    }
+  }
+
+  for (const port of COMPOSE_PREVIEW_HTTP_PORTS) {
+    const httpMatch = ports.find((entry) => resolveNumericPort(entry?.target) === port)
+    if (httpMatch) {
+      return port
+    }
+  }
+
+  return resolveNumericPort(ports[0]?.target) ?? resolveNumericPort(previewContainerPort)
+}
+
+function scoreComposeServiceForPreview(serviceName, ports, previewContainerPort) {
+  const normalizedName = normalizeComposeServiceName(serviceName)
+  let score = 0
+
+  if (/(?:^|[-_])(front|frontend|web|ui|client|site|viewer|app|www|nginx)(?:$|[-_])/.test(normalizedName)) {
+    score += 80
+  }
+
+  if (/(?:^|[-_])(back|backend|api|server|worker|queue|job|cron|db|redis|mysql|postgres|mongo)(?:$|[-_])/.test(normalizedName)) {
+    score -= 60
+  }
+
+  const targetPort = choosePreviewTargetPort(ports, previewContainerPort)
+  if (targetPort && COMPOSE_PREVIEW_HTTP_PORTS.includes(targetPort)) {
+    score += 40
+  }
+
+  const requestedPort = resolveNumericPort(previewContainerPort)
+  if (requestedPort && targetPort === requestedPort) {
+    score += 120
+  }
+
+  if (Array.isArray(ports) && ports.length > 0) {
+    score += 10
+  }
+
+  return {
+    score,
+    targetPort,
+  }
+}
+
+function selectComposePreviewService(services, { previewContainerPort, previewServiceName } = {}) {
+  if (!services || typeof services !== 'object' || Array.isArray(services)) {
+    return {
+      serviceName: null,
+      targetPort: resolveNumericPort(previewContainerPort),
+    }
+  }
+
+  const requestedServiceName = normalizeComposeServiceName(previewServiceName)
+  if (requestedServiceName) {
+    for (const [serviceName, serviceConfig] of Object.entries(services)) {
+      if (normalizeComposeServiceName(serviceName) !== requestedServiceName) {
+        continue
+      }
+
+      const ports = collectPreviewComposePorts(serviceConfig, previewContainerPort) ?? []
+      return {
+        serviceName,
+        targetPort: choosePreviewTargetPort(ports, previewContainerPort),
+      }
+    }
+  }
+
+  let bestMatch = null
+  let bestIndex = Number.POSITIVE_INFINITY
+
+  for (const [index, [serviceName, serviceConfig]] of Object.entries(services).entries()) {
+    const ports = collectPreviewComposePorts(serviceConfig, previewContainerPort) ?? []
+    const candidate = scoreComposeServiceForPreview(serviceName, ports, previewContainerPort)
+    if (!bestMatch || candidate.score > bestMatch.score || (candidate.score === bestMatch.score && index < bestIndex)) {
+      bestMatch = {
+        serviceName,
+        targetPort: candidate.targetPort,
+        score: candidate.score,
+      }
+      bestIndex = index
+    }
+  }
+
+  return {
+    serviceName: bestMatch?.serviceName ?? null,
+    targetPort: bestMatch?.targetPort ?? resolveNumericPort(previewContainerPort),
+  }
+}
+
 async function generatePreviewComposeFile({
   composeFileAbsolutePath,
   composeProjectName,
   logPath,
   previewContainerPort,
+  previewServiceName,
 }) {
   await ensureDirectory(DOCKER_CONTEXTS_ROOT)
 
@@ -975,6 +1081,11 @@ async function generatePreviewComposeFile({
     throw new Error('Compose file normalization could not find any services.')
   }
 
+  const previewTarget = selectComposePreviewService(services, {
+    previewContainerPort,
+    previewServiceName,
+  })
+
   let hasPublishedPreviewPort = false
   const previewServices = {}
 
@@ -1007,30 +1118,78 @@ async function generatePreviewComposeFile({
   const previewComposePath = path.join(DOCKER_CONTEXTS_ROOT, `compose-preview-${composeProjectName}-${randomUUID()}.json`)
   await fs.promises.writeFile(previewComposePath, JSON.stringify(previewConfig, null, 2), 'utf8')
   appendToLogFile(logPath, `JB Hub preview compose generated: ${previewComposePath}\n`)
+  if (previewTarget.serviceName) {
+    appendToLogFile(
+      logPath,
+      `JB Hub preview target service: ${previewTarget.serviceName}${previewTarget.targetPort ? `:${previewTarget.targetPort}` : ''}\n`,
+    )
+  }
 
   if (!hasPublishedPreviewPort) {
     appendToLogFile(logPath, 'JB Hub preview warning: no HTTP port could be inferred from this compose file.\n')
   }
 
-  return previewComposePath
+  return {
+    previewComposePath,
+    previewServiceName: previewTarget.serviceName,
+    previewTargetPort: previewTarget.targetPort,
+  }
 }
 
-function resolveComposePublishedPort(psEntries) {
-  for (const entry of psEntries) {
-    const publishers = Array.isArray(entry?.Publishers) ? entry.Publishers : []
-    for (const publisher of publishers) {
-      const protocol = typeof publisher?.Protocol === 'string' ? publisher.Protocol.trim().toLowerCase() : 'tcp'
-      if (protocol && protocol !== 'tcp') {
+function resolveComposePublishedPort(psEntries, { preferredServiceName, preferredTargetPort } = {}) {
+  const normalizedPreferredService = normalizeComposeServiceName(preferredServiceName)
+  const normalizedPreferredTargetPort = resolveNumericPort(preferredTargetPort)
+
+  function findPublishedPort(entries, { requireService = false, requireTargetPort = false } = {}) {
+    for (const entry of entries) {
+      if (requireService && normalizeComposeServiceName(entry?.Service) !== normalizedPreferredService) {
         continue
       }
-      const port = resolveNumericPort(publisher?.PublishedPort)
-      if (port) {
-        return port
+
+      const publishers = Array.isArray(entry?.Publishers) ? entry.Publishers : []
+      for (const publisher of publishers) {
+        const protocol = typeof publisher?.Protocol === 'string' ? publisher.Protocol.trim().toLowerCase() : 'tcp'
+        if (protocol && protocol !== 'tcp') {
+          continue
+        }
+
+        const targetPort = resolveNumericPort(publisher?.TargetPort)
+        if (requireTargetPort && targetPort !== normalizedPreferredTargetPort) {
+          continue
+        }
+
+        const publishedPort = resolveNumericPort(publisher?.PublishedPort)
+        if (publishedPort) {
+          return publishedPort
+        }
       }
+    }
+
+    return null
+  }
+
+  if (normalizedPreferredService && normalizedPreferredTargetPort) {
+    const exactMatch = findPublishedPort(psEntries, { requireService: true, requireTargetPort: true })
+    if (exactMatch) {
+      return exactMatch
     }
   }
 
-  return null
+  if (normalizedPreferredService) {
+    const serviceMatch = findPublishedPort(psEntries, { requireService: true })
+    if (serviceMatch) {
+      return serviceMatch
+    }
+  }
+
+  if (normalizedPreferredTargetPort) {
+    const targetPortMatch = findPublishedPort(psEntries, { requireTargetPort: true })
+    if (targetPortMatch) {
+      return targetPortMatch
+    }
+  }
+
+  return findPublishedPort(psEntries)
 }
 
 function resolvePublishedPortFromDockerPortOutput(text) {
@@ -1265,6 +1424,7 @@ async function runDockerComposePreview({
   composeFileAbsolutePath,
   uploaderName,
   previewContainerPort,
+  previewServiceName,
   healthcheckPath,
   readinessTimeoutSec,
 }) {
@@ -1311,11 +1471,16 @@ async function runDockerComposePreview({
     )
 
   const deploymentId = Number(insertResult.lastInsertRowid)
-  const previewComposeFilePath = await generatePreviewComposeFile({
+  const {
+    previewComposePath: previewComposeFilePath,
+    previewServiceName: selectedPreviewServiceName,
+    previewTargetPort,
+  } = await generatePreviewComposeFile({
     composeFileAbsolutePath,
     composeProjectName,
     logPath: getBuildLogPath(jobId),
     previewContainerPort,
+    previewServiceName,
   })
 
   try {
@@ -1344,7 +1509,10 @@ async function runDockerComposePreview({
     )
 
     const psEntries = parseComposePsOutput(psResult.output)
-    const hostPort = resolveComposePublishedPort(psEntries)
+    const hostPort = resolveComposePublishedPort(psEntries, {
+      preferredServiceName: selectedPreviewServiceName,
+      preferredTargetPort: previewTargetPort,
+    })
     const endpointUrl = hostPort ? `http://${DOCKER_PREVIEW_HOST}:${hostPort}` : null
     const ready = endpointUrl
       ? await waitForPreview({
@@ -1476,6 +1644,10 @@ async function processDockerBuildJob(db, jobRow) {
         composeFileAbsolutePath,
         uploaderName: String(jobRow.uploader_name ?? ''),
         previewContainerPort: containerPort,
+        previewServiceName:
+          typeof metadataRun.previewService === 'string' && metadataRun.previewService.trim()
+            ? metadataRun.previewService.trim()
+            : null,
         healthcheckPath:
           typeof metadataRun.healthcheckPath === 'string' && metadataRun.healthcheckPath.trim()
             ? metadataRun.healthcheckPath.trim()
@@ -1969,6 +2141,7 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
              composeFileAbsolutePath: path.join(definitionDir, composeFileName),
              uploaderName: String(deploymentRow.uploader_name ?? ''),
              previewContainerPort: resolveNumericPort(deploymentRow.container_port),
+             previewServiceName: null,
              healthcheckPath: null,
              readinessTimeoutSec: null,
            }),
