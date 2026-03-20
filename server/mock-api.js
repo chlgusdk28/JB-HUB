@@ -8,6 +8,7 @@ import { createToolsRouter } from './tools-api.js'
 import { ensureRuntimeLayout, UPLOAD_TEMP_DIR } from './runtime-paths.js'
 
 const API_PORT = Number.parseInt(process.env.API_PORT || '8787', 10)
+const MAX_UPLOAD_FILE_SIZE_BYTES = 512 * 1024 * 1024
 const app = express()
 
 ensureRuntimeLayout()
@@ -17,7 +18,17 @@ app.use(cors())
 app.use(fileUpload({
   createParentPath: true,
   abortOnLimit: true,
-  limits: { fileSize: 64 * 1024 * 1024 },
+  responseOnLimit: JSON.stringify({
+    error: 'Uploaded file is too large. The maximum size is 512MB per file.',
+  }),
+  limitHandler: (_req, res) => {
+    if (!res.headersSent) {
+      res.status(413).json({
+        error: 'Uploaded file is too large. The maximum size is 512MB per file.',
+      })
+    }
+  },
+  limits: { fileSize: MAX_UPLOAD_FILE_SIZE_BYTES },
   useTempFiles: true,
   tempFileDir: UPLOAD_TEMP_DIR,
 }))

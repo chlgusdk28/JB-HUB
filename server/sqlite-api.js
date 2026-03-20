@@ -26,6 +26,13 @@ const JWT_SECRET = process.env.API_JWT_HS256_SECRET || 'change-this-secret-min-3
 const ADMIN_USERNAME = process.env.ADMIN_DEFAULT_USERNAME || 'admin'
 const ADMIN_PASSWORD = process.env.ADMIN_DEFAULT_PASSWORD || 'admin123'
 const CORS_ORIGINS = process.env.CORS_ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://127.0.0.1:3000']
+const MAX_UPLOAD_FILE_SIZE_BYTES = 512 * 1024 * 1024
+const SERVE_STATIC_DIST = process.env.SERVE_STATIC_DIST === '1'
+const DIST_DIR = join(process.cwd(), 'dist')
+const DIST_INDEX_PATH = join(DIST_DIR, 'index.html')
+const FILE_UPLOAD_LIMIT_ERROR = {
+  error: 'Uploaded file is too large. The maximum size is 512MB per file.',
+}
 
 // Express 앱
 const app = express()
@@ -41,7 +48,13 @@ app.use(cors({
 app.use(fileUpload({
   createParentPath: true,
   abortOnLimit: true,
-  limits: { fileSize: 64 * 1024 * 1024 },
+  responseOnLimit: JSON.stringify(FILE_UPLOAD_LIMIT_ERROR),
+  limitHandler: (_req, res) => {
+    if (!res.headersSent) {
+      res.status(413).json(FILE_UPLOAD_LIMIT_ERROR)
+    }
+  },
+  limits: { fileSize: MAX_UPLOAD_FILE_SIZE_BYTES },
   useTempFiles: true,
   tempFileDir: UPLOAD_TEMP_DIR,
 }))
@@ -580,6 +593,13 @@ const containerRuntime = attachProjectContainerRoutes(app, {
   jwt,
   jwtSecret: JWT_SECRET,
 })
+
+if (SERVE_STATIC_DIST && existsSync(DIST_DIR) && existsSync(DIST_INDEX_PATH)) {
+  app.use(express.static(DIST_DIR, { index: false, maxAge: '5m' }))
+  app.get(/^(?!\/api\/).*/, (_req, res) => {
+    res.sendFile(DIST_INDEX_PATH)
+  })
+}
 
 app.use((error, req, res, _next) => {
   console.error('[sqlite-api]', req.method, req.originalUrl, error)

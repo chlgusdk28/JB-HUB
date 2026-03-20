@@ -1,7 +1,7 @@
 import { createProjectEditHeaders } from './project-edit-token-storage'
 
 const API_BASE = '/api/v1'
-const UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000
+const UPLOAD_REQUEST_TIMEOUT_MS = 30 * 60 * 1000
 
 export interface ProjectContainerBuildJob {
   id: number
@@ -48,6 +48,7 @@ export interface ProjectContainerDefinition {
   name: string
   rootPath: string
   dockerfilePath: string
+  composeFilePath: string | null
   metadataPath: string | null
   buildContextPath: string
   containerPort: number | null
@@ -77,6 +78,8 @@ interface UploadDockerfileOptions {
 }
 
 interface UploadContainerBundleOptions extends UploadDockerfileOptions {}
+interface UploadComposeBundleOptions extends UploadDockerfileOptions {}
+interface UploadDockerComposeOptions extends UploadDockerfileOptions {}
 
 interface StartContainerBuildInput {
   definitionName: string
@@ -149,7 +152,7 @@ function sendUploadRequest<T>(
           const payload = JSON.parse(responseText) as { error?: unknown }
           reject(new Error(typeof payload.error === 'string' ? payload.error : `업로드에 실패했습니다. (${xhr.status})`))
         } catch {
-          reject(new Error(`업로드에 실패했습니다. (${xhr.status})`))
+          reject(new Error(responseText.trim() || `업로드에 실패했습니다. (${xhr.status})`))
         }
         return
       }
@@ -193,6 +196,30 @@ function buildDockerfileUploadFormData(file: File, definitionName?: string) {
   return formData
 }
 
+function buildComposeUploadFormData(composeFile: File, contextTar: File, definitionName?: string) {
+  const formData = new FormData()
+  formData.append('composeFile', composeFile, composeFile.name || 'docker-compose.yml')
+  formData.append('contextTar', contextTar, contextTar.name || 'context.tar')
+
+  if (definitionName) {
+    formData.append('definitionName', definitionName)
+  }
+
+  return formData
+}
+
+function buildDockerComposeUploadFormData(dockerfile: File, composeFile: File, definitionName?: string) {
+  const formData = new FormData()
+  formData.append('dockerfile', dockerfile, dockerfile.name || 'Dockerfile')
+  formData.append('composeFile', composeFile, composeFile.name || 'docker-compose.yml')
+
+  if (definitionName) {
+    formData.append('definitionName', definitionName)
+  }
+
+  return formData
+}
+
 export async function fetchProjectContainers(projectId: number): Promise<ProjectContainerOverview> {
   const response = await fetch(`${API_BASE}/projects/${projectId}/containers`)
   if (!response.ok) {
@@ -210,6 +237,34 @@ export async function uploadProjectDockerfile(
   return await sendUploadRequest<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>(
     `${API_BASE}/projects/${projectId}/containers/upload`,
     buildDockerfileUploadFormData(file, options.definitionName),
+    projectId,
+    options,
+  )
+}
+
+export async function uploadProjectComposeBundle(
+  projectId: number,
+  composeFile: File,
+  contextTar: File,
+  options: UploadComposeBundleOptions,
+) {
+  return await sendUploadRequest<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>(
+    `${API_BASE}/projects/${projectId}/containers/upload`,
+    buildComposeUploadFormData(composeFile, contextTar, options.definitionName),
+    projectId,
+    options,
+  )
+}
+
+export async function uploadProjectDockerComposeFiles(
+  projectId: number,
+  dockerfile: File,
+  composeFile: File,
+  options: UploadDockerComposeOptions,
+) {
+  return await sendUploadRequest<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>(
+    `${API_BASE}/projects/${projectId}/containers/upload`,
+    buildDockerComposeUploadFormData(dockerfile, composeFile, options.definitionName),
     projectId,
     options,
   )

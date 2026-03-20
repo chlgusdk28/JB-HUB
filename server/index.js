@@ -3842,7 +3842,17 @@ async function start() {
   const defaultFileUploadMiddleware = fileUpload({
     createParentPath: true,
     abortOnLimit: true,
-    limits: { fileSize: 256 * 1024 * 1024 },
+    responseOnLimit: JSON.stringify({
+      error: 'Uploaded file is too large. The maximum size is 512MB per file.',
+    }),
+    limitHandler: (_req, res) => {
+      if (!res.headersSent) {
+        res.status(413).json({
+          error: 'Uploaded file is too large. The maximum size is 512MB per file.',
+        })
+      }
+    },
+    limits: { fileSize: 512 * 1024 * 1024 },
     useTempFiles: true,
     tempFileDir: UPLOAD_TEMP_DIR,
   })

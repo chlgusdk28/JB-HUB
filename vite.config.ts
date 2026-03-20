@@ -20,12 +20,15 @@ export default defineConfig({
   server: {
     host: true,
     port: 3000,
-    watch: usePollingWatch
-      ? {
-          usePolling: true,
-          interval: Number.isFinite(pollingInterval) ? pollingInterval : 300,
-        }
-      : undefined,
+    watch: {
+      ignored: ['**/.runtime/**'],
+      ...(usePollingWatch
+        ? {
+            usePolling: true,
+            interval: Number.isFinite(pollingInterval) ? pollingInterval : 300,
+          }
+        : {}),
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8787',

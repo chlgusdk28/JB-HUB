@@ -16,7 +16,9 @@ const DEFAULT_BUILD_TIMEOUT_MS = 10 * 60 * 1000
 const DEFAULT_READINESS_TIMEOUT_MS = 60 * 1000
 const MAX_LOG_FILE_BYTES = 512 * 1024
 const CONTAINER_ROOT_DIR = 'containers'
+const COMPOSE_FILE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']
 const CONTAINER_META_FILE_NAMES = ['jbhub.container.json', 'jbhub.container.yml', 'jbhub.container.yaml']
+const CONTAINER_META_FILE_NAME_SET = new Set(CONTAINER_META_FILE_NAMES.map((fileName) => fileName.toLowerCase()))
 const CONTAINER_ALLOWED_HIDDEN_FILES = new Set(['.dockerignore', '.env.example', '.gitignore'])
 const CONTAINER_RESTRICTED_PATH_SEGMENTS = new Set(['.aws', '.git', '.hg', '.kube', '.ssh', '.svn'])
 const CONTAINER_RESTRICTED_FILE_PATTERNS = [
@@ -130,6 +132,160 @@ function getBuildLogPath(jobId) {
 
 function getBuildContextPath(jobId) {
   return path.join(DOCKER_CONTEXTS_ROOT, `job-${jobId}`)
+}
+
+function findDockerfileName(definitionDir) {
+  if (pathExists(path.join(definitionDir, 'Dockerfile'))) {
+    return 'Dockerfile'
+  }
+
+  let entries = []
+  try {
+    entries = fs.readdirSync(definitionDir, { withFileTypes: true })
+  } catch {
+    return null
+  }
+
+  const candidates = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((fileName) => /dockerfile/i.test(fileName))
+    .sort((left, right) => {
+      const leftScore = left.toLowerCase() === 'dockerfile' ? 0 : 1
+      const rightScore = right.toLowerCase() === 'dockerfile' ? 0 : 1
+      if (leftScore !== rightScore) {
+        return leftScore - rightScore
+      }
+
+      return left.localeCompare(right, 'en', { numeric: true })
+    })
+
+  return candidates[0] ?? null
+}
+
+function findComposeFileName(definitionDir) {
+  for (const fileName of COMPOSE_FILE_NAMES) {
+    if (pathExists(path.join(definitionDir, fileName))) {
+      return fileName
+    }
+  }
+
+  let entries = []
+  try {
+    entries = fs.readdirSync(definitionDir, { withFileTypes: true })
+  } catch {
+    return null
+  }
+
+  const yamlCandidates = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((fileName) => /\.ya?ml$/i.test(fileName))
+    .filter((fileName) => !CONTAINER_META_FILE_NAME_SET.has(fileName.toLowerCase()))
+
+  const rankedCandidates = yamlCandidates
+    .map((fileName) => {
+      const fullPath = path.join(definitionDir, fileName)
+      const contents = fs.readFileSync(fullPath, 'utf8')
+      const normalizedName = fileName.toLowerCase()
+      const score =
+        (normalizedName.includes('compose') ? 4 : 0) +
+        (/^\s*services\s*:/m.test(contents) ? 3 : 0) +
+        (/^\s*version\s*:/m.test(contents) ? 1 : 0)
+
+      return {
+        fileName,
+        score,
+      }
+    })
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score
+      }
+      return left.fileName.localeCompare(right.fileName, 'en', { numeric: true })
+    })
+
+  if (rankedCandidates.length > 0) {
+    return rankedCandidates[0].fileName
+  }
+
+  return null
+}
+
+function collectOfflineImageBundleEntries(bundleDir) {
+  const includeEntries = new Set()
+
+  const manifestPath = path.join(bundleDir, 'manifest.json')
+  if (pathExists(manifestPath)) {
+    includeEntries.add('manifest.json')
+    try {
+      const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+      if (Array.isArray(parsed)) {
+        for (const manifestEntry of parsed) {
+          if (manifestEntry && typeof manifestEntry === 'object') {
+            if (typeof manifestEntry.Config === 'string' && manifestEntry.Config.trim()) {
+              includeEntries.add(normalizeProjectRelativePath(manifestEntry.Config, 'config.json'))
+            }
+            if (Array.isArray(manifestEntry.Layers)) {
+              for (const layerPath of manifestEntry.Layers) {
+                if (typeof layerPath === 'string' && layerPath.trim()) {
+                  includeEntries.add(normalizeProjectRelativePath(layerPath, 'layer.tar'))
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore invalid manifest payloads and fall back to marker-based detection.
+    }
+  }
+
+  for (const markerName of ['repositories', 'index.json', 'oci-layout', 'blobs']) {
+    if (pathExists(path.join(bundleDir, markerName))) {
+      includeEntries.add(markerName)
+    }
+  }
+
+  const resolvedEntries = Array.from(includeEntries).filter((entry) => pathExists(path.join(bundleDir, entry)))
+  return resolvedEntries.length > 0 ? resolvedEntries : null
+}
+
+async function loadOfflineImagesIfPresent(bundleDir, logPath) {
+  const bundleEntries = collectOfflineImageBundleEntries(bundleDir)
+  if (!bundleEntries) {
+    return null
+  }
+
+  await ensureDirectory(DOCKER_ARTIFACTS_ROOT)
+  const archivePath = path.join(DOCKER_ARTIFACTS_ROOT, `offline-image-${Date.now()}-${randomUUID()}.tar`)
+
+  try {
+    const packageResult = await runLoggedProcess('tar', ['-cf', archivePath, '-C', bundleDir, ...bundleEntries], {
+      cwd: bundleDir,
+      logPath,
+      timeoutMs: DEFAULT_BUILD_TIMEOUT_MS,
+    })
+
+    if (packageResult.exitCode !== 0) {
+      throw new Error(packageResult.output.trim() || 'Offline image bundle could not be packaged.')
+    }
+
+    const loadResult = await runLoggedProcess('docker', ['load', '-i', archivePath], {
+      cwd: bundleDir,
+      logPath,
+      timeoutMs: DEFAULT_BUILD_TIMEOUT_MS,
+    })
+
+    if (loadResult.exitCode !== 0) {
+      throw new Error(loadResult.output.trim() || 'Offline image bundle could not be loaded.')
+    }
+
+    return loadResult.output.trim() || 'Offline images loaded.'
+  } finally {
+    await removeDirectoryContents(archivePath)
+  }
 }
 
 function readSingleHeader(headerValue) {
@@ -512,26 +668,35 @@ async function scanProjectContainerDefinitions(projectId, db) {
     const metadata = await readContainerMetadata(definitionDir)
     const metadataBuild = metadata.data?.build ?? {}
     const metadataRun = metadata.data?.run ?? {}
-    const dockerfilePath = normalizeProjectRelativePath(metadataBuild.dockerfile ?? 'Dockerfile', 'Dockerfile')
+    const composeFileName = findComposeFileName(definitionDir)
+    const detectedDockerfileName = findDockerfileName(definitionDir)
+    const dockerfilePath = normalizeProjectRelativePath(
+      metadataBuild.dockerfile ?? detectedDockerfileName ?? 'Dockerfile',
+      'Dockerfile',
+    )
     const contextPath = normalizeProjectRelativePath(metadataBuild.context ?? '.', '.')
     const dockerfileAbsolutePath = path.join(definitionDir, dockerfilePath)
 
-    if (!pathExists(dockerfileAbsolutePath)) {
+    if (!composeFileName && !pathExists(dockerfileAbsolutePath)) {
       continue
     }
 
-    const dockerfileContents = await readTextFileIfExists(dockerfileAbsolutePath)
-    const containerPort = resolveNumericPort(metadataRun.containerPort) ?? inferPortFromDockerfileContents(dockerfileContents)
+    const dockerfileContents = pathExists(dockerfileAbsolutePath) ? await readTextFileIfExists(dockerfileAbsolutePath) : null
+    const containerPort = composeFileName
+      ? resolveNumericPort(metadataRun.containerPort)
+      : resolveNumericPort(metadataRun.containerPort) ?? inferPortFromDockerfileContents(dockerfileContents)
     const warnings = [...metadata.warnings]
     if (!pathExists(path.join(definitionDir, '.dockerignore'))) {
       warnings.push('.dockerignore is recommended.')
     }
-    if (!containerPort) {
+    if (composeFileName) {
+      warnings.push('Compose file detected. Upload the matching tar archive contents for build context changes.')
+    } else if (!containerPort) {
       warnings.push('Container port could not be inferred. Add EXPOSE or container metadata.')
     }
 
     const files = await listContainerDefinitionFiles(definitionDir)
-    if (files.length <= 2 && dockerfileNeedsLocalContext(dockerfileContents)) {
+    if (!composeFileName && files.length <= 2 && dockerfileNeedsLocalContext(dockerfileContents)) {
       warnings.push('This Dockerfile uses COPY or ADD. Upload the matching context files before building.')
     }
 
@@ -539,6 +704,7 @@ async function scanProjectContainerDefinitions(projectId, db) {
       name: definitionName,
       rootPath: `${CONTAINER_ROOT_DIR}/${definitionName}`,
       dockerfilePath: `${CONTAINER_ROOT_DIR}/${definitionName}/${dockerfilePath}`,
+      composeFilePath: composeFileName ? `${CONTAINER_ROOT_DIR}/${definitionName}/${composeFileName}` : null,
       metadataPath: metadata.fileName ? `${CONTAINER_ROOT_DIR}/${definitionName}/${metadata.fileName}` : null,
       buildContextPath: `${CONTAINER_ROOT_DIR}/${definitionName}/${contextPath === '.' ? '' : contextPath}`.replace(/\/+$/, ''),
       containerPort,
@@ -624,7 +790,296 @@ async function ensureDirectory(targetPath) {
   await fs.promises.mkdir(targetPath, { recursive: true })
 }
 
+async function extractContextArchive(archivePath, targetDir) {
+  const inspectResult = await runLoggedProcess('tar', ['-tf', archivePath], {
+    logPath: null,
+    timeoutMs: DEFAULT_BUILD_TIMEOUT_MS,
+  })
+
+  if (inspectResult.exitCode !== 0) {
+    throw new Error(inspectResult.output.trim() || 'Could not inspect the tar archive.')
+  }
+
+  for (const entry of inspectResult.output.split(/\r?\n/)) {
+    const normalizedEntry = entry.trim().replace(/\\/g, '/')
+    if (!normalizedEntry) {
+      continue
+    }
+
+    const segments = normalizedEntry.split('/').filter(Boolean)
+    if (normalizedEntry.startsWith('/') || segments.includes('..')) {
+      throw new Error('The tar archive contains an invalid file path.')
+    }
+  }
+
+  const extractResult = await runLoggedProcess('tar', ['-xf', archivePath, '-C', targetDir], {
+    logPath: null,
+    timeoutMs: DEFAULT_BUILD_TIMEOUT_MS,
+  })
+
+  if (extractResult.exitCode !== 0) {
+    throw new Error(extractResult.output.trim() || 'Could not extract the tar archive.')
+  }
+}
+
+function parseComposePsOutput(text) {
+  const trimmed = String(text ?? '').trim()
+  if (!trimmed) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) {
+      return parsed
+    }
+    if (parsed && typeof parsed === 'object') {
+      return [parsed]
+    }
+  } catch {
+    return trimmed
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          const parsed = JSON.parse(line)
+          return parsed && typeof parsed === 'object' ? [parsed] : []
+        } catch {
+          return []
+        }
+      })
+  }
+
+  return []
+}
+
+function parseComposeTargetPort(value) {
+  if (typeof value === 'number') {
+    return resolveNumericPort(value)
+  }
+
+  const normalized = String(value ?? '').trim()
+  if (!normalized) {
+    return null
+  }
+
+  const withoutProtocol = normalized.split('/')[0]?.trim() ?? ''
+  if (!withoutProtocol) {
+    return null
+  }
+
+  const segments = withoutProtocol
+    .split(':')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+
+  if (segments.length === 0) {
+    return null
+  }
+
+  return resolveNumericPort(segments.at(-1))
+}
+
+function normalizeComposePortEntry(entry) {
+  if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+    const target = resolveNumericPort(entry.target)
+    if (!target) {
+      return null
+    }
+
+    const normalized = { target }
+    if (typeof entry.protocol === 'string' && entry.protocol.trim()) {
+      normalized.protocol = entry.protocol.trim()
+    }
+    if (typeof entry.app_protocol === 'string' && entry.app_protocol.trim()) {
+      normalized.app_protocol = entry.app_protocol.trim()
+    }
+    if (typeof entry.mode === 'string' && entry.mode.trim()) {
+      normalized.mode = entry.mode.trim()
+    }
+
+    return normalized
+  }
+
+  const target = parseComposeTargetPort(entry)
+  return target ? { target, protocol: 'tcp' } : null
+}
+
+function collectPreviewComposePorts(serviceConfig, previewContainerPort) {
+  const configuredPorts = Array.isArray(serviceConfig?.ports)
+    ? serviceConfig.ports.map((entry) => normalizeComposePortEntry(entry)).filter(Boolean)
+    : []
+
+  if (configuredPorts.length > 0) {
+    return configuredPorts
+  }
+
+  const exposedPorts = Array.isArray(serviceConfig?.expose)
+    ? serviceConfig.expose
+        .map((entry) => {
+          const target = parseComposeTargetPort(entry)
+          return target ? { target, protocol: 'tcp' } : null
+        })
+        .filter(Boolean)
+    : []
+
+  if (exposedPorts.length > 0) {
+    return exposedPorts
+  }
+
+  const fallbackPort = resolveNumericPort(previewContainerPort)
+  return fallbackPort ? [{ target: fallbackPort, protocol: 'tcp' }] : null
+}
+
+async function generatePreviewComposeFile({
+  composeFileAbsolutePath,
+  composeProjectName,
+  logPath,
+  previewContainerPort,
+}) {
+  await ensureDirectory(DOCKER_CONTEXTS_ROOT)
+
+  const configResult = await runLoggedProcess(
+    'docker',
+    ['compose', '-p', composeProjectName, '-f', composeFileAbsolutePath, 'config', '--format', 'json'],
+    {
+      cwd: path.dirname(composeFileAbsolutePath),
+      logPath,
+      timeoutMs: DEFAULT_BUILD_TIMEOUT_MS,
+    },
+  )
+
+  if (configResult.exitCode !== 0) {
+    throw new Error(configResult.output.trim() || 'Compose file could not be normalized for preview.')
+  }
+
+  let parsedConfig
+  try {
+    parsedConfig = JSON.parse(configResult.output)
+  } catch {
+    throw new Error('Compose file normalization returned invalid JSON.')
+  }
+
+  if (!parsedConfig || typeof parsedConfig !== 'object' || Array.isArray(parsedConfig)) {
+    throw new Error('Compose file normalization returned an invalid config object.')
+  }
+
+  const services =
+    parsedConfig.services && typeof parsedConfig.services === 'object' && !Array.isArray(parsedConfig.services)
+      ? parsedConfig.services
+      : null
+
+  if (!services) {
+    throw new Error('Compose file normalization could not find any services.')
+  }
+
+  let hasPublishedPreviewPort = false
+  const previewServices = {}
+
+  for (const [serviceName, serviceConfig] of Object.entries(services)) {
+    if (!serviceConfig || typeof serviceConfig !== 'object' || Array.isArray(serviceConfig)) {
+      previewServices[serviceName] = serviceConfig
+      continue
+    }
+
+    const normalizedService = { ...serviceConfig }
+    delete normalizedService.container_name
+
+    const previewPorts = collectPreviewComposePorts(serviceConfig, previewContainerPort)
+    if (previewPorts && previewPorts.length > 0) {
+      normalizedService.ports = previewPorts
+      hasPublishedPreviewPort = true
+    } else {
+      delete normalizedService.ports
+    }
+
+    previewServices[serviceName] = normalizedService
+  }
+
+  const previewConfig = {
+    ...parsedConfig,
+    name: composeProjectName,
+    services: previewServices,
+  }
+
+  const previewComposePath = path.join(DOCKER_CONTEXTS_ROOT, `compose-preview-${composeProjectName}-${randomUUID()}.json`)
+  await fs.promises.writeFile(previewComposePath, JSON.stringify(previewConfig, null, 2), 'utf8')
+  appendToLogFile(logPath, `JB Hub preview compose generated: ${previewComposePath}\n`)
+
+  if (!hasPublishedPreviewPort) {
+    appendToLogFile(logPath, 'JB Hub preview warning: no HTTP port could be inferred from this compose file.\n')
+  }
+
+  return previewComposePath
+}
+
+function resolveComposePublishedPort(psEntries) {
+  for (const entry of psEntries) {
+    const publishers = Array.isArray(entry?.Publishers) ? entry.Publishers : []
+    for (const publisher of publishers) {
+      const protocol = typeof publisher?.Protocol === 'string' ? publisher.Protocol.trim().toLowerCase() : 'tcp'
+      if (protocol && protocol !== 'tcp') {
+        continue
+      }
+      const port = resolveNumericPort(publisher?.PublishedPort)
+      if (port) {
+        return port
+      }
+    }
+  }
+
+  return null
+}
+
 async function stopDockerDeployment(db, deploymentRow, { remove = true } = {}) {
+  const imageReference = String(deploymentRow.image_reference ?? '')
+  if (imageReference.startsWith('compose:')) {
+    const composeProjectName = deploymentRow.container_name || imageReference.slice('compose:'.length)
+    let errorMessage = null
+
+    try {
+      const listResult = await runLoggedProcess(
+        'docker',
+        ['ps', '-aq', '--filter', `label=com.docker.compose.project=${composeProjectName}`],
+        {
+          logPath: null,
+          timeoutMs: 30000,
+        },
+      )
+
+      if (listResult.exitCode !== 0) {
+        errorMessage = listResult.output.trim() || 'Failed to inspect compose containers.'
+      } else {
+        const containerIds = listResult.output
+          .split(/\s+/)
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+
+        if (containerIds.length > 0) {
+          const removeResult = await runLoggedProcess('docker', ['rm', '-f', ...containerIds], {
+            logPath: null,
+            timeoutMs: 60000,
+          })
+
+          if (removeResult.exitCode !== 0) {
+            errorMessage = removeResult.output.trim() || 'Failed to stop the compose stack.'
+          }
+        }
+      }
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Failed to stop the compose stack.'
+    }
+
+    db.prepare(
+      `UPDATE docker_deployments
+       SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP, stopped_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+    ).run(errorMessage ? 'failed' : 'stopped', errorMessage, deploymentRow.id)
+
+    return serializeDeployment(db.prepare('SELECT * FROM docker_deployments WHERE id = ?').get(deploymentRow.id))
+  }
+
   const identifier = deploymentRow.container_id || deploymentRow.container_name
   if (!identifier) {
     db.prepare(
@@ -770,6 +1225,165 @@ async function runDockerPreview({
   }
 }
 
+async function runDockerComposePreview({
+  db,
+  jobId,
+  projectId,
+  definitionName,
+  composeFileAbsolutePath,
+  uploaderName,
+  previewContainerPort,
+  healthcheckPath,
+  readinessTimeoutSec,
+}) {
+  const runningDeployments = db
+    .prepare('SELECT * FROM docker_deployments WHERE project_id = ? AND definition_name = ? AND status = ?')
+    .all(projectId, definitionName, 'running')
+
+  for (const deploymentRow of runningDeployments) {
+    await stopDockerDeployment(db, deploymentRow)
+  }
+
+  const deploymentToken = randomUUID()
+  const composeProjectName = `jbhub-p${projectId}-${slugifyName(definitionName)}-${jobId}`
+  const imageReference = `compose:${composeProjectName}`
+
+  const insertResult = db
+    .prepare(
+      `INSERT INTO docker_deployments (
+         project_id,
+         image_record_id,
+         deployment_id,
+         uploader_name,
+         definition_name,
+         container_name,
+         container_port,
+         host_port,
+         status,
+         image_reference,
+         build_job_id
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      projectId,
+      0,
+      deploymentToken,
+      uploaderName,
+      definitionName,
+      composeProjectName,
+      null,
+      null,
+      'starting',
+      imageReference,
+      jobId,
+    )
+
+  const deploymentId = Number(insertResult.lastInsertRowid)
+  const previewComposeFilePath = await generatePreviewComposeFile({
+    composeFileAbsolutePath,
+    composeProjectName,
+    logPath: getBuildLogPath(jobId),
+    previewContainerPort,
+  })
+
+  try {
+    const upResult = await runLoggedProcess(
+      'docker',
+      ['compose', '-p', composeProjectName, '-f', previewComposeFilePath, 'up', '-d', '--build'],
+      {
+        cwd: path.dirname(composeFileAbsolutePath),
+        logPath: getBuildLogPath(jobId),
+        timeoutMs: DEFAULT_BUILD_TIMEOUT_MS,
+      },
+    )
+
+    if (upResult.exitCode !== 0) {
+      throw new Error(upResult.output.trim() || 'Compose stack failed to start.')
+    }
+
+    const psResult = await runLoggedProcess(
+      'docker',
+      ['compose', '-p', composeProjectName, '-f', previewComposeFilePath, 'ps', '--format', 'json'],
+      {
+        cwd: path.dirname(composeFileAbsolutePath),
+        logPath: null,
+        timeoutMs: 30000,
+      },
+    )
+
+    const psEntries = parseComposePsOutput(psResult.output)
+    const hostPort = resolveComposePublishedPort(psEntries)
+    const endpointUrl = hostPort ? `http://127.0.0.1:${hostPort}` : null
+    const ready = endpointUrl
+      ? await waitForPreview({
+          endpointUrl,
+          healthcheckPath,
+          timeoutMs:
+            (Number.isFinite(Number(readinessTimeoutSec)) && Number(readinessTimeoutSec) > 0
+              ? Number(readinessTimeoutSec)
+              : DEFAULT_READINESS_TIMEOUT_MS / 1000) * 1000,
+        })
+      : false
+
+    const containerListResult = await runLoggedProcess(
+      'docker',
+      ['ps', '-aq', '--filter', `label=com.docker.compose.project=${composeProjectName}`],
+      {
+        logPath: null,
+        timeoutMs: 30000,
+      },
+    )
+
+    const containerId = containerListResult.output
+      .split(/\s+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .at(-1) ?? null
+
+    db.prepare(
+      `UPDATE docker_deployments
+       SET status = ?, container_id = ?, host_port = ?, endpoint_url = ?, run_output = ?, image_reference = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+    ).run(
+      'running',
+      containerId,
+      hostPort,
+      endpointUrl,
+      upResult.output.trim() || null,
+      imageReference,
+      endpointUrl
+        ? ready
+          ? null
+          : 'Compose stack is running, but the readiness check did not succeed before the timeout.'
+        : 'Compose stack is running, but no published HTTP port was detected.',
+      deploymentId,
+    )
+
+    db.prepare(
+      `UPDATE docker_build_jobs
+       SET status = ?, deployment_id = ?, preferred_host_port = ?, image_reference = ?, finished_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+    ).run('running', deploymentId, hostPort, imageReference, jobId)
+
+    return serializeDeployment(db.prepare('SELECT * FROM docker_deployments WHERE id = ?').get(deploymentId))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Compose stack failed to start.'
+    db.prepare(
+      `UPDATE docker_deployments
+       SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+    ).run('failed', message, deploymentId)
+
+    throw error
+  } finally {
+    try {
+      await fs.promises.rm(previewComposeFilePath, { force: true })
+    } catch {
+      // Ignore preview compose cleanup errors.
+    }
+  }
+}
+
 async function processDockerBuildJob(db, jobRow) {
   const jobId = Number(jobRow.id)
   const projectId = Number(jobRow.project_id)
@@ -798,6 +1412,7 @@ async function processDockerBuildJob(db, jobRow) {
   const metadata = await readContainerMetadata(definitionDir)
   const metadataBuild = metadata.data?.build ?? {}
   const metadataRun = metadata.data?.run ?? {}
+  const composeFileName = findComposeFileName(definitionDir)
   const dockerfilePath = normalizeProjectRelativePath(jobRow.dockerfile_path ?? metadataBuild.dockerfile ?? 'Dockerfile', 'Dockerfile')
   const contextPath = normalizeProjectRelativePath(jobRow.context_path ?? metadataBuild.context ?? '.', '.')
   const requestedContainerPort =
@@ -809,9 +1424,42 @@ async function processDockerBuildJob(db, jobRow) {
   await fs.promises.cp(definitionDir, buildContextRoot, { recursive: true, force: true })
 
   const dockerfileAbsolutePath = path.join(buildContextRoot, dockerfilePath)
+  const composeFileAbsolutePath = composeFileName ? path.join(buildContextRoot, composeFileName) : null
   const contextAbsolutePath = path.join(buildContextRoot, contextPath)
   const dockerfileContents = await readTextFileIfExists(dockerfileAbsolutePath)
   const containerPort = requestedContainerPort ?? inferPortFromDockerfileContents(dockerfileContents)
+
+  if (composeFileAbsolutePath && pathExists(composeFileAbsolutePath)) {
+    try {
+      const offlineImageLoadMessage = await loadOfflineImagesIfPresent(buildContextRoot, logPath)
+      if (offlineImageLoadMessage) {
+        appendToLogFile(logPath, `\n${offlineImageLoadMessage}\n`)
+      }
+
+      await runDockerComposePreview({
+        db,
+        jobId,
+        projectId,
+        definitionName,
+        composeFileAbsolutePath,
+        uploaderName: String(jobRow.uploader_name ?? ''),
+        previewContainerPort: containerPort,
+        healthcheckPath:
+          typeof metadataRun.healthcheckPath === 'string' && metadataRun.healthcheckPath.trim()
+            ? metadataRun.healthcheckPath.trim()
+            : null,
+        readinessTimeoutSec: resolveNumericPort(metadataRun.readinessTimeoutSec),
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Compose preview deployment failed.'
+      db.prepare(
+        'UPDATE docker_build_jobs SET status = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?',
+      ).run('failed', message, jobId)
+      appendToLogFile(logPath, `\nCompose deployment error: ${message}\n`)
+    }
+
+    return
+  }
 
   if (!pathExists(dockerfileAbsolutePath)) {
     db.prepare(
@@ -1008,13 +1656,87 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
             ? req.files.dockerfile[0]
             : req.files.dockerfile
           : null
+      const uploadedComposeFile =
+        req.files && req.files.composeFile
+          ? Array.isArray(req.files.composeFile)
+            ? req.files.composeFile[0]
+            : req.files.composeFile
+          : null
+      const uploadedContextTar =
+        req.files && req.files.contextTar
+          ? Array.isArray(req.files.contextTar)
+            ? req.files.contextTar[0]
+            : req.files.contextTar
+          : null
 
-      if (!req.files || (!req.files.files && !uploadedDockerfile)) {
-        return res.status(400).json({ error: 'Dockerfile or container files are required.' })
+      if (!req.files || (!req.files.files && !uploadedDockerfile && !uploadedComposeFile && !uploadedContextTar)) {
+        return res.status(400).json({ error: 'Upload Dockerfile + compose, compose + tar, or a Dockerfile.' })
       }
 
       const relativePaths = normalizeUploadedRelativePaths(req.body?.relativePaths)
       const requestedDefinitionName = sanitizePathSegment(req.body?.definitionName, 'main')
+
+      if (uploadedDockerfile && uploadedComposeFile && !uploadedContextTar && !req.files.files) {
+        const definitionDir = getProjectContainerDirectory(projectId, requestedDefinitionName)
+        const dockerfileFileName = sanitizePathSegment(uploadedDockerfile.name, 'Dockerfile')
+        const composeFileName = /\.ya?ml$/i.test(String(uploadedComposeFile.name ?? ''))
+          ? sanitizePathSegment(uploadedComposeFile.name, 'docker-compose.yml')
+          : 'docker-compose.yml'
+        const dockerfilePath = path.join(definitionDir, dockerfileFileName || 'Dockerfile')
+        const composeFilePath = path.join(definitionDir, composeFileName)
+
+        await removeDirectoryContents(definitionDir)
+        await ensureDirectory(definitionDir)
+        await uploadedDockerfile.mv(dockerfilePath)
+        await uploadedComposeFile.mv(composeFilePath)
+
+        const defaultDockerfilePath = path.join(definitionDir, 'Dockerfile')
+        if (path.basename(dockerfilePath).toLowerCase() !== 'dockerfile' && !pathExists(defaultDockerfilePath)) {
+          await fs.promises.copyFile(dockerfilePath, defaultDockerfilePath)
+        }
+
+        return res.status(201).json({
+          uploadedDefinitionName: requestedDefinitionName,
+          definitions: await scanProjectContainerDefinitions(projectId, db),
+        })
+      }
+
+      if (uploadedComposeFile || uploadedContextTar) {
+        if (!uploadedComposeFile || !uploadedContextTar) {
+          return res.status(400).json({ error: 'Upload both a compose file and a tar archive.' })
+        }
+
+        const definitionDir = getProjectContainerDirectory(projectId, requestedDefinitionName)
+        const composeFileName = /\.ya?ml$/i.test(String(uploadedComposeFile.name ?? ''))
+          ? sanitizePathSegment(uploadedComposeFile.name, 'docker-compose.yml')
+          : 'docker-compose.yml'
+        const composeFilePath = path.join(definitionDir, composeFileName)
+        const archivePath = path.join(
+          DOCKER_ARTIFACTS_ROOT,
+          `${requestedDefinitionName}-${Date.now()}-${sanitizePathSegment(uploadedContextTar.name, 'context.tar')}`,
+        )
+
+        await removeDirectoryContents(definitionDir)
+        await ensureDirectory(definitionDir)
+        await ensureDirectory(DOCKER_ARTIFACTS_ROOT)
+        await uploadedComposeFile.mv(composeFilePath)
+        await uploadedContextTar.mv(archivePath)
+
+        try {
+          await extractContextArchive(archivePath, definitionDir)
+        } catch (error) {
+          await removeDirectoryContents(definitionDir)
+          await removeDirectoryContents(archivePath)
+          throw error
+        }
+
+        await removeDirectoryContents(archivePath)
+
+        return res.status(201).json({
+          uploadedDefinitionName: requestedDefinitionName,
+          definitions: await scanProjectContainerDefinitions(projectId, db),
+        })
+      }
 
       if (uploadedDockerfile && !req.files.files) {
         const definitionDir = getProjectContainerDirectory(projectId, requestedDefinitionName)
@@ -1109,6 +1831,8 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         return res.status(404).json({ error: 'Container definition not found.' })
       }
 
+      const detectedDockerfileName = findDockerfileName(definitionDir)
+
       const result = db.prepare(
         `INSERT INTO docker_build_jobs (
            project_id, uploader_name, source_file_name, source_archive_path, dockerfile_path, context_path,
@@ -1119,7 +1843,7 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         readProjectActorName(req) || String(project.author ?? ''),
         definitionName,
         definitionDir,
-        normalizeProjectRelativePath(req.body?.dockerfilePath ?? 'Dockerfile', 'Dockerfile'),
+        normalizeProjectRelativePath(req.body?.dockerfilePath ?? detectedDockerfileName ?? 'Dockerfile', 'Dockerfile'),
         normalizeProjectRelativePath(req.body?.contextPath ?? '.', '.'),
         slugifyName(`jbhub-project-${projectId}-${definitionName}`),
         `job-${Date.now()}`,
@@ -1194,6 +1918,30 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
       if (action === 'restart' && deploymentRow.status === 'running') {
         await stopDockerDeployment(db, deploymentRow)
       }
+
+       const imageReference = String(deploymentRow.image_reference ?? '')
+       if (imageReference.startsWith('compose:')) {
+         const definitionName = String(deploymentRow.definition_name ?? '')
+         const definitionDir = getProjectContainerDirectory(Number(deploymentRow.project_id), definitionName)
+         const composeFileName = findComposeFileName(definitionDir)
+         if (!composeFileName) {
+           return res.status(400).json({ error: 'Compose file could not be found for this deployment.' })
+         }
+
+         return res.json({
+           deployment: await runDockerComposePreview({
+             db,
+             jobId: Number(deploymentRow.build_job_id ?? 0) || Number(deploymentRow.id),
+             projectId: Number(deploymentRow.project_id),
+             definitionName,
+             composeFileAbsolutePath: path.join(definitionDir, composeFileName),
+             uploaderName: String(deploymentRow.uploader_name ?? ''),
+             previewContainerPort: resolveNumericPort(deploymentRow.container_port),
+             healthcheckPath: null,
+             readinessTimeoutSec: null,
+           }),
+         })
+       }
 
       return res.json({
         deployment: await runDockerPreview({
