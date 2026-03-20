@@ -14,6 +14,7 @@
     "test:api": "node scripts/test-api.mjs",
     "smoke:web": "node scripts/smoke-web.mjs",
     "smoke": "npm run test:api && npm run build && npm run smoke:web",
+    "package:finance": "node scripts/build-finance-runtime-bundle.mjs",
     "preview": "node scripts/run-vite.mjs preview",
     "start:api": "node scripts/run-api.mjs",
     "platform:reset": "node scripts/reset-signup-platform-data.mjs"

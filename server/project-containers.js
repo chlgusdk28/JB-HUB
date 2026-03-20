@@ -16,6 +16,7 @@ const DEFAULT_BUILD_TIMEOUT_MS = 10 * 60 * 1000
 const DEFAULT_READINESS_TIMEOUT_MS = 60 * 1000
 const MAX_LOG_FILE_BYTES = 512 * 1024
 const CONTAINER_ROOT_DIR = 'containers'
+const DOCKER_PREVIEW_HOST = String(process.env.DOCKER_PREVIEW_HOST || '127.0.0.1').trim() || '127.0.0.1'
 const COMPOSE_FILE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']
 const CONTAINER_META_FILE_NAMES = ['jbhub.container.json', 'jbhub.container.yml', 'jbhub.container.yaml']
 const CONTAINER_META_FILE_NAME_SET = new Set(CONTAINER_META_FILE_NAMES.map((fileName) => fileName.toLowerCase()))
@@ -520,7 +521,7 @@ function serializeDeployment(row) {
     hostPort,
     imageReference: row.image_reference ? String(row.image_reference) : null,
     status: row.status ? String(row.status) : 'stopped',
-    endpointUrl: row.endpoint_url ? String(row.endpoint_url) : hostPort ? `http://127.0.0.1:${hostPort}` : null,
+    endpointUrl: row.endpoint_url ? String(row.endpoint_url) : hostPort ? `http://${DOCKER_PREVIEW_HOST}:${hostPort}` : null,
     sitePreviewUrl: row.deployment_id ? `/api/v1/container-previews/${row.deployment_id}/` : null,
     errorMessage: row.error_message ? String(row.error_message) : null,
     runOutput: row.run_output ? String(row.run_output) : null,
@@ -1032,6 +1033,11 @@ function resolveComposePublishedPort(psEntries) {
   return null
 }
 
+function resolvePublishedPortFromDockerPortOutput(text) {
+  const match = String(text ?? '').match(/:(\d{2,5})\s*$/m)
+  return match ? resolveNumericPort(match[1]) : null
+}
+
 async function stopDockerDeployment(db, deploymentRow, { remove = true } = {}) {
   const imageReference = String(deploymentRow.image_reference ?? '')
   if (imageReference.startsWith('compose:')) {
@@ -1132,7 +1138,6 @@ async function runDockerPreview({
     await stopDockerDeployment(db, deploymentRow)
   }
 
-  const hostPort = await allocatePort(preferredHostPort)
   const deploymentToken = randomUUID()
   const containerName = `jbhub-p${projectId}-${slugifyName(definitionName)}-${jobId}`
 
@@ -1160,19 +1165,28 @@ async function runDockerPreview({
       definitionName,
       containerName,
       containerPort,
-      hostPort,
+      resolveNumericPort(preferredHostPort),
       'starting',
       imageReference,
       jobId,
     )
 
   const deploymentId = Number(insertResult.lastInsertRowid)
-  const endpointUrl = `http://127.0.0.1:${hostPort}`
+  let hostPort = resolveNumericPort(preferredHostPort)
+  let endpointUrl = hostPort ? `http://${DOCKER_PREVIEW_HOST}:${hostPort}` : null
 
   try {
+    const runArgs = ['run', '-d', '--name', containerName]
+    if (hostPort && containerPort) {
+      runArgs.push('-p', `${hostPort}:${containerPort}`)
+    } else {
+      runArgs.push('-P')
+    }
+    runArgs.push(imageReference)
+
     const runResult = await runLoggedProcess(
       'docker',
-      ['run', '-d', '--name', containerName, '-p', `${hostPort}:${containerPort}`, imageReference],
+      runArgs,
       {
         logPath: getBuildLogPath(jobId),
         timeoutMs: 120000,
@@ -1184,14 +1198,28 @@ async function runDockerPreview({
     }
 
     const containerId = runResult.output.trim().split(/\s+/).filter(Boolean).at(-1) ?? null
-    const ready = await waitForPreview({
-      endpointUrl,
-      healthcheckPath,
-      timeoutMs:
-        (Number.isFinite(Number(readinessTimeoutSec)) && Number(readinessTimeoutSec) > 0
-          ? Number(readinessTimeoutSec)
-          : DEFAULT_READINESS_TIMEOUT_MS / 1000) * 1000,
-    })
+    if (!hostPort && containerId && containerPort) {
+      const portResult = await runLoggedProcess('docker', ['port', containerId, `${containerPort}/tcp`], {
+        logPath: null,
+        timeoutMs: 30000,
+      })
+
+      if (portResult.exitCode === 0) {
+        hostPort = resolvePublishedPortFromDockerPortOutput(portResult.output)
+        endpointUrl = hostPort ? `http://${DOCKER_PREVIEW_HOST}:${hostPort}` : null
+      }
+    }
+
+    const ready = endpointUrl
+      ? await waitForPreview({
+          endpointUrl,
+          healthcheckPath,
+          timeoutMs:
+            (Number.isFinite(Number(readinessTimeoutSec)) && Number(readinessTimeoutSec) > 0
+              ? Number(readinessTimeoutSec)
+              : DEFAULT_READINESS_TIMEOUT_MS / 1000) * 1000,
+        })
+      : false
 
     db.prepare(
       `UPDATE docker_deployments
@@ -1202,7 +1230,11 @@ async function runDockerPreview({
       containerId,
       endpointUrl,
       runResult.output.trim() || null,
-      ready ? null : 'Preview is running, but the readiness check did not succeed before the timeout.',
+      endpointUrl
+        ? ready
+          ? null
+          : 'Preview is running, but the readiness check did not succeed before the timeout.'
+        : 'Preview is running, but no published HTTP port was detected.',
       deploymentId,
     )
 
@@ -1313,7 +1345,7 @@ async function runDockerComposePreview({
 
     const psEntries = parseComposePsOutput(psResult.output)
     const hostPort = resolveComposePublishedPort(psEntries)
-    const endpointUrl = hostPort ? `http://127.0.0.1:${hostPort}` : null
+    const endpointUrl = hostPort ? `http://${DOCKER_PREVIEW_HOST}:${hostPort}` : null
     const ready = endpointUrl
       ? await waitForPreview({
           endpointUrl,
@@ -1973,7 +2005,7 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
       const requestUrl = new URL(`http://preview.local${req.originalUrl}`)
       const proxyBasePath = `/api/v1/container-previews/${token}`
       const forwardPath = requestUrl.pathname.slice(proxyBasePath.length) || '/'
-      const targetUrl = `http://127.0.0.1:${deployment.host_port}${forwardPath}${requestUrl.search}`
+      const targetUrl = `http://${DOCKER_PREVIEW_HOST}:${deployment.host_port}${forwardPath}${requestUrl.search}`
 
       const headers = new Headers()
       for (const [key, value] of Object.entries(req.headers)) {
