@@ -1,0 +1,244 @@
+import { createProjectEditHeaders } from './project-edit-token-storage'
+
+const API_BASE = '/api/v1'
+const UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000
+
+export interface ProjectContainerBuildJob {
+  id: number
+  projectId: number
+  definitionName: string
+  status: string
+  uploaderName: string
+  dockerfilePath: string
+  contextPath: string
+  imageReference: string | null
+  containerPort: number | null
+  preferredHostPort: number | null
+  errorMessage: string | null
+  logPath: string | null
+  deploymentId: number | null
+  createdAt: string | null
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+export interface ProjectContainerDeployment {
+  id: number
+  projectId: number
+  buildJobId: number | null
+  definitionName: string
+  deploymentToken: string
+  uploaderName: string
+  containerName: string | null
+  containerId: string | null
+  containerPort: number | null
+  hostPort: number | null
+  imageReference: string | null
+  status: string
+  endpointUrl: string | null
+  sitePreviewUrl: string | null
+  errorMessage: string | null
+  runOutput: string | null
+  createdAt: string | null
+  updatedAt: string | null
+  stoppedAt: string | null
+}
+
+export interface ProjectContainerDefinition {
+  name: string
+  rootPath: string
+  dockerfilePath: string
+  metadataPath: string | null
+  buildContextPath: string
+  containerPort: number | null
+  healthcheckPath: string | null
+  readinessTimeoutSec: number | null
+  files: string[]
+  warnings: string[]
+  lastBuildJob: ProjectContainerBuildJob | null
+  activeDeployment: ProjectContainerDeployment | null
+}
+
+export interface ProjectContainerOverview {
+  docker: {
+    available: boolean
+    version: string | null
+    error: string | null
+  }
+  definitions: ProjectContainerDefinition[]
+  buildJobs: ProjectContainerBuildJob[]
+  deployments: ProjectContainerDeployment[]
+}
+
+interface UploadContainerBundleOptions {
+  currentUserName: string
+  definitionName?: string
+  onProgress?: (percent: number) => void
+}
+
+interface StartContainerBuildInput {
+  definitionName: string
+  dockerfilePath?: string
+  contextPath?: string
+  containerPort?: number | null
+  preferredHostPort?: number | null
+}
+
+function getRelativePath(file: File) {
+  const withRelativePath = file as File & { webkitRelativePath?: string }
+  return withRelativePath.webkitRelativePath?.trim() || file.name
+}
+
+async function extractApiError(response: Response, fallbackMessage: string) {
+  try {
+    const payload = (await response.json()) as { error?: unknown }
+    if (typeof payload.error === 'string' && payload.error.trim()) {
+      return payload.error
+    }
+  } catch {
+    // Ignore invalid error payloads.
+  }
+
+  return fallbackMessage
+}
+
+function buildContainerUploadFormData(files: File[], definitionName?: string) {
+  const formData = new FormData()
+
+  for (const file of files) {
+    formData.append('files', file)
+  }
+
+  formData.append(
+    'relativePaths',
+    JSON.stringify(files.map((file) => getRelativePath(file))),
+  )
+
+  if (definitionName) {
+    formData.append('definitionName', definitionName)
+  }
+
+  return formData
+}
+
+export async function fetchProjectContainers(projectId: number): Promise<ProjectContainerOverview> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/containers`)
+  if (!response.ok) {
+    throw new Error(await extractApiError(response, `컨테이너 정보를 불러오지 못했습니다. (${response.status})`))
+  }
+
+  return (await response.json()) as ProjectContainerOverview
+}
+
+export async function uploadProjectContainerBundle(
+  projectId: number,
+  files: File[],
+  options: UploadContainerBundleOptions,
+) {
+  return await new Promise<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}/projects/${projectId}/containers/upload`)
+    xhr.responseType = 'text'
+    xhr.timeout = UPLOAD_REQUEST_TIMEOUT_MS
+    xhr.setRequestHeader('x-jb-user-name', options.currentUserName)
+
+    for (const [headerName, headerValue] of Object.entries(createProjectEditHeaders(projectId))) {
+      xhr.setRequestHeader(headerName, headerValue)
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!options.onProgress) {
+        return
+      }
+
+      if (event.lengthComputable && event.total > 0) {
+        options.onProgress(Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100))))
+        return
+      }
+
+      options.onProgress(25)
+    }
+
+    xhr.onerror = () => {
+      reject(new Error('컨테이너 업로드 중 네트워크 오류가 발생했습니다.'))
+    }
+
+    xhr.ontimeout = () => {
+      reject(new Error('컨테이너 업로드 시간이 초과되었습니다.'))
+    }
+
+    xhr.onload = () => {
+      const responseText = typeof xhr.responseText === 'string' ? xhr.responseText : ''
+      if (xhr.status < 200 || xhr.status >= 300) {
+        try {
+          const payload = JSON.parse(responseText) as { error?: unknown }
+          reject(new Error(typeof payload.error === 'string' ? payload.error : `컨테이너 업로드에 실패했습니다. (${xhr.status})`))
+        } catch {
+          reject(new Error(`컨테이너 업로드에 실패했습니다. (${xhr.status})`))
+        }
+        return
+      }
+
+      try {
+        options.onProgress?.(100)
+        resolve(JSON.parse(responseText) as { uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] })
+      } catch {
+        reject(new Error('컨테이너 업로드 응답이 올바르지 않습니다.'))
+      }
+    }
+
+    xhr.send(buildContainerUploadFormData(files, options.definitionName))
+  })
+}
+
+export async function startProjectContainerBuild(
+  projectId: number,
+  input: StartContainerBuildInput,
+  currentUserName: string,
+) {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/containers/build`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-jb-user-name': currentUserName,
+      ...createProjectEditHeaders(projectId),
+    },
+    body: JSON.stringify(input),
+  })
+
+  if (!response.ok) {
+    throw new Error(await extractApiError(response, `컨테이너 빌드를 시작하지 못했습니다. (${response.status})`))
+  }
+
+  return (await response.json()) as { job?: ProjectContainerBuildJob }
+}
+
+export async function fetchProjectContainerBuildLogs(jobId: number) {
+  const response = await fetch(`${API_BASE}/containers/build-jobs/${jobId}/logs`)
+  if (!response.ok) {
+    throw new Error(await extractApiError(response, `빌드 로그를 불러오지 못했습니다. (${response.status})`))
+  }
+
+  return (await response.json()) as { job?: ProjectContainerBuildJob; logs?: string }
+}
+
+export async function controlProjectDeployment(
+  projectId: number,
+  deploymentId: number,
+  action: 'start' | 'stop' | 'restart',
+  currentUserName: string,
+) {
+  const response = await fetch(`${API_BASE}/containers/deployments/${deploymentId}/${action}`, {
+    method: 'POST',
+    headers: {
+      'x-jb-user-name': currentUserName,
+      ...createProjectEditHeaders(projectId),
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(await extractApiError(response, `배포 상태를 변경하지 못했습니다. (${response.status})`))
+  }
+
+  return (await response.json()) as { deployment?: ProjectContainerDeployment }
+}

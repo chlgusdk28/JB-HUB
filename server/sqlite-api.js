@@ -10,6 +10,7 @@ import cors from 'cors'
 import compression from 'compression'
 import fileUpload from 'express-fileupload'
 import helmet from 'helmet'
+import { attachProjectContainerRoutes } from './project-containers.js'
 import { createToolsRouter } from './tools-api.js'
 import { ensureRuntimeLayout, SQLITE_DB_PATH, UPLOAD_TEMP_DIR } from './runtime-paths.js'
 
@@ -73,6 +74,20 @@ function toProjectDto(project) {
     tags: parseTags(project?.tags),
     is_new: Boolean(project?.is_new),
   }
+}
+
+function generateProjectEditToken(project) {
+  return jwt.sign(
+    {
+      type: 'project-edit',
+      projectId: Number(project?.id),
+      author: project?.author,
+    },
+    JWT_SECRET,
+    {
+      expiresIn: '30d',
+    },
+  )
 }
 
 function initDatabase() {
@@ -400,7 +415,8 @@ app.post('/api/v1/projects', (req, res, next) => {
 
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid)
     return res.status(201).json({
-      project: toProjectDto(project)
+      project: toProjectDto(project),
+      projectEditToken: generateProjectEditToken(project),
     })
   } catch (error) {
     return next(error)
@@ -429,7 +445,8 @@ app.post('/api/v1/projects', authenticateJWT, (req, res) => {
 
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid)
   res.status(201).json({
-    project: toProjectDto(project)
+    project: toProjectDto(project),
+    projectEditToken: generateProjectEditToken(project),
   })
 })
 
@@ -558,6 +575,11 @@ app.post('/api/v1/users', authenticateJWT, requireAdmin, (req, res) => {
 
 // 서버 시작
 initDatabase()
+const containerRuntime = attachProjectContainerRoutes(app, {
+  db,
+  jwt,
+  jwtSecret: JWT_SECRET,
+})
 
 app.use((error, req, res, _next) => {
   console.error('[sqlite-api]', req.method, req.originalUrl, error)
@@ -575,6 +597,7 @@ app.listen(API_PORT, () => {
 
 // 종료 시 정리
 process.on('SIGINT', () => {
+  containerRuntime?.stop?.()
   db?.close()
   console.log('[sqlite-api] 데이터베이스 연결 종료')
   process.exit(0)

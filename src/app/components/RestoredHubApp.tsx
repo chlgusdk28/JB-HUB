@@ -1041,6 +1041,7 @@ export default function RestoredHubApp() {
         brandEyebrow="프로젝트 허브"
         brandTitle="JB Hub"
         brandDescription="사내 프로젝트, 파일, Docker 배포 흐름을 같은 맥락에서 탐색하는 운영형 허브입니다."
+        onBrandClick={() => navigateToPage('home')}
         navigationSections={navigationSections}
         activeNavigationId={activeNavigationId}
         onSelectNavigation={navigateToPage}
