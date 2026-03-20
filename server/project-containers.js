@@ -299,6 +299,14 @@ function inferPortFromDockerfileContents(dockerfileContents) {
   return match ? resolveNumericPort(match[1]) : null
 }
 
+function dockerfileNeedsLocalContext(dockerfileContents) {
+  if (typeof dockerfileContents !== 'string') {
+    return false
+  }
+
+  return /^\s*(COPY|ADD)\s+/im.test(dockerfileContents)
+}
+
 async function listContainerDefinitionFiles(definitionDir) {
   const items = []
 
@@ -523,6 +531,9 @@ async function scanProjectContainerDefinitions(projectId, db) {
     }
 
     const files = await listContainerDefinitionFiles(definitionDir)
+    if (files.length <= 2 && dockerfileNeedsLocalContext(dockerfileContents)) {
+      warnings.push('This Dockerfile uses COPY or ADD. Upload the matching context files before building.')
+    }
 
     definitions.push({
       name: definitionName,
@@ -991,13 +1002,32 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         return res.status(403).json({ error: 'Only the project author can manage containers.' })
       }
 
-      if (!req.files || !req.files.files) {
-        return res.status(400).json({ error: 'At least one file is required.' })
+      const uploadedDockerfile =
+        req.files && req.files.dockerfile
+          ? Array.isArray(req.files.dockerfile)
+            ? req.files.dockerfile[0]
+            : req.files.dockerfile
+          : null
+
+      if (!req.files || (!req.files.files && !uploadedDockerfile)) {
+        return res.status(400).json({ error: 'Dockerfile or container files are required.' })
+      }
+
+      const relativePaths = normalizeUploadedRelativePaths(req.body?.relativePaths)
+      const requestedDefinitionName = sanitizePathSegment(req.body?.definitionName, 'main')
+
+      if (uploadedDockerfile && !req.files.files) {
+        const definitionDir = getProjectContainerDirectory(projectId, requestedDefinitionName)
+        await ensureDirectory(definitionDir)
+        await uploadedDockerfile.mv(path.join(definitionDir, 'Dockerfile'))
+
+        return res.status(201).json({
+          uploadedDefinitionName: requestedDefinitionName,
+          definitions: await scanProjectContainerDefinitions(projectId, db),
+        })
       }
 
       const uploadedFiles = Array.isArray(req.files.files) ? req.files.files : [req.files.files]
-      const relativePaths = normalizeUploadedRelativePaths(req.body?.relativePaths)
-      const requestedDefinitionName = sanitizePathSegment(req.body?.definitionName, 'container')
 
       const preparedFiles = uploadedFiles.map((uploadedFile, index) => {
         const fallbackName = sanitizePathSegment(uploadedFile.name, `file-${index + 1}`)

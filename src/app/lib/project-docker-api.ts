@@ -70,11 +70,13 @@ export interface ProjectContainerOverview {
   deployments: ProjectContainerDeployment[]
 }
 
-interface UploadContainerBundleOptions {
+interface UploadDockerfileOptions {
   currentUserName: string
   definitionName?: string
   onProgress?: (percent: number) => void
 }
+
+interface UploadContainerBundleOptions extends UploadDockerfileOptions {}
 
 interface StartContainerBuildInput {
   definitionName: string
@@ -102,42 +104,15 @@ async function extractApiError(response: Response, fallbackMessage: string) {
   return fallbackMessage
 }
 
-function buildContainerUploadFormData(files: File[], definitionName?: string) {
-  const formData = new FormData()
-
-  for (const file of files) {
-    formData.append('files', file)
-  }
-
-  formData.append(
-    'relativePaths',
-    JSON.stringify(files.map((file) => getRelativePath(file))),
-  )
-
-  if (definitionName) {
-    formData.append('definitionName', definitionName)
-  }
-
-  return formData
-}
-
-export async function fetchProjectContainers(projectId: number): Promise<ProjectContainerOverview> {
-  const response = await fetch(`${API_BASE}/projects/${projectId}/containers`)
-  if (!response.ok) {
-    throw new Error(await extractApiError(response, `컨테이너 정보를 불러오지 못했습니다. (${response.status})`))
-  }
-
-  return (await response.json()) as ProjectContainerOverview
-}
-
-export async function uploadProjectContainerBundle(
+function sendUploadRequest<T>(
+  url: string,
+  formData: FormData,
   projectId: number,
-  files: File[],
-  options: UploadContainerBundleOptions,
+  options: UploadDockerfileOptions,
 ) {
-  return await new Promise<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>((resolve, reject) => {
+  return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${API_BASE}/projects/${projectId}/containers/upload`)
+    xhr.open('POST', url)
     xhr.responseType = 'text'
     xhr.timeout = UPLOAD_REQUEST_TIMEOUT_MS
     xhr.setRequestHeader('x-jb-user-name', options.currentUserName)
@@ -160,11 +135,11 @@ export async function uploadProjectContainerBundle(
     }
 
     xhr.onerror = () => {
-      reject(new Error('컨테이너 업로드 중 네트워크 오류가 발생했습니다.'))
+      reject(new Error('업로드 중 네트워크 오류가 발생했습니다.'))
     }
 
     xhr.ontimeout = () => {
-      reject(new Error('컨테이너 업로드 시간이 초과되었습니다.'))
+      reject(new Error('업로드 시간이 초과되었습니다.'))
     }
 
     xhr.onload = () => {
@@ -172,23 +147,85 @@ export async function uploadProjectContainerBundle(
       if (xhr.status < 200 || xhr.status >= 300) {
         try {
           const payload = JSON.parse(responseText) as { error?: unknown }
-          reject(new Error(typeof payload.error === 'string' ? payload.error : `컨테이너 업로드에 실패했습니다. (${xhr.status})`))
+          reject(new Error(typeof payload.error === 'string' ? payload.error : `업로드에 실패했습니다. (${xhr.status})`))
         } catch {
-          reject(new Error(`컨테이너 업로드에 실패했습니다. (${xhr.status})`))
+          reject(new Error(`업로드에 실패했습니다. (${xhr.status})`))
         }
         return
       }
 
       try {
         options.onProgress?.(100)
-        resolve(JSON.parse(responseText) as { uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] })
+        resolve(JSON.parse(responseText) as T)
       } catch {
-        reject(new Error('컨테이너 업로드 응답이 올바르지 않습니다.'))
+        reject(new Error('업로드 응답을 해석하지 못했습니다.'))
       }
     }
 
-    xhr.send(buildContainerUploadFormData(files, options.definitionName))
+    xhr.send(formData)
   })
+}
+
+function buildContainerUploadFormData(files: File[], definitionName?: string) {
+  const formData = new FormData()
+
+  for (const file of files) {
+    formData.append('files', file)
+  }
+
+  formData.append('relativePaths', JSON.stringify(files.map((file) => getRelativePath(file))))
+
+  if (definitionName) {
+    formData.append('definitionName', definitionName)
+  }
+
+  return formData
+}
+
+function buildDockerfileUploadFormData(file: File, definitionName?: string) {
+  const formData = new FormData()
+  formData.append('dockerfile', file, file.name || 'Dockerfile')
+
+  if (definitionName) {
+    formData.append('definitionName', definitionName)
+  }
+
+  return formData
+}
+
+export async function fetchProjectContainers(projectId: number): Promise<ProjectContainerOverview> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/containers`)
+  if (!response.ok) {
+    throw new Error(await extractApiError(response, `컨테이너 정보를 불러오지 못했습니다. (${response.status})`))
+  }
+
+  return (await response.json()) as ProjectContainerOverview
+}
+
+export async function uploadProjectDockerfile(
+  projectId: number,
+  file: File,
+  options: UploadDockerfileOptions,
+) {
+  return await sendUploadRequest<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>(
+    `${API_BASE}/projects/${projectId}/containers/upload`,
+    buildDockerfileUploadFormData(file, options.definitionName),
+    projectId,
+    options,
+  )
+}
+
+export async function uploadProjectContainerBundle(
+  projectId: number,
+  files: File[],
+  options: UploadContainerBundleOptions,
+) {
+  return await sendUploadRequest<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>(
+    `${API_BASE}/projects/${projectId}/containers/upload`,
+    buildContainerUploadFormData(files, options.definitionName),
+    projectId,
+    options,
+  )
 }
 
 export async function startProjectContainerBuild(

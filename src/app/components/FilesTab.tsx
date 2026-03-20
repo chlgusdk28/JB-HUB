@@ -423,6 +423,10 @@ export function FilesTab({
           </div>
         ) : null}
 
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 md:hidden">
+          모바일에서는 업로드를 숨겼습니다. 파일과 폴더 업로드는 PC에서만 사용할 수 있습니다.
+        </div>
+
         <label
           onDragEnter={() => {
             if (canUpload && !isUploading) {
@@ -437,7 +441,7 @@ export function FilesTab({
             }
           }}
           onDrop={handleDrop}
-          className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed px-6 py-10 text-center transition ${
+          className={`hidden cursor-pointer flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed px-6 py-10 text-center transition md:flex ${
             isDragActive
               ? 'border-sky-400 bg-sky-50'
               : 'border-slate-300 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(244,248,252,0.9))] hover:border-slate-400 hover:bg-white'
@@ -465,7 +469,7 @@ export function FilesTab({
           </span>
         </label>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="hidden gap-3 md:grid md:grid-cols-2">
           <label
             className={`flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 transition ${
               isUploading || !canUpload ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-slate-300 hover:bg-slate-50'
