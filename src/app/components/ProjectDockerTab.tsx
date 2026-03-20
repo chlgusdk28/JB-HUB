@@ -364,6 +364,23 @@ export function ProjectDockerTab({
     ) ?? null
 
   const deployment = visibleDefinition?.activeDeployment ?? null
+  const deploymentServiceEndpoints = useMemo(
+    () =>
+      (deployment?.serviceEndpoints ?? []).filter(
+        (serviceEndpoint) => Boolean(serviceEndpoint.endpointUrl || serviceEndpoint.sitePreviewUrl),
+      ),
+    [deployment?.serviceEndpoints],
+  )
+  const primaryServiceEndpoint =
+    deploymentServiceEndpoints.find((serviceEndpoint) => serviceEndpoint.isPrimary) ??
+    deploymentServiceEndpoints[0] ??
+    null
+  const previewFrameUrl =
+    primaryServiceEndpoint?.sitePreviewUrl ??
+    primaryServiceEndpoint?.endpointUrl ??
+    deployment?.sitePreviewUrl ??
+    deployment?.endpointUrl ??
+    undefined
 
   if (!projectId) {
     return (
