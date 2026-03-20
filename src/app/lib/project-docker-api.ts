@@ -22,6 +22,15 @@ export interface ProjectContainerBuildJob {
   finishedAt: string | null
 }
 
+export interface ProjectContainerServiceEndpoint {
+  serviceName: string | null
+  containerPort: number | null
+  hostPort: number | null
+  endpointUrl: string | null
+  sitePreviewUrl: string | null
+  isPrimary: boolean
+}
+
 export interface ProjectContainerDeployment {
   id: number
   projectId: number
@@ -37,6 +46,7 @@ export interface ProjectContainerDeployment {
   status: string
   endpointUrl: string | null
   sitePreviewUrl: string | null
+  serviceEndpoints: ProjectContainerServiceEndpoint[]
   errorMessage: string | null
   runOutput: string | null
   createdAt: string | null

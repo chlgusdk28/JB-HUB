@@ -2368,14 +2368,45 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
     try {
       const token = String(req.params.deploymentToken ?? '')
       const deployment = db.prepare('SELECT * FROM docker_deployments WHERE deployment_id = ? LIMIT 1').get(token)
-      if (!deployment || !deployment.host_port || deployment.status !== 'running') {
+      if (!deployment || deployment.status !== 'running') {
         return res.status(404).send('Preview is not available.')
       }
 
+      const enrichedDeployment = await enrichDeploymentRow(deployment)
       const requestUrl = new URL(`http://preview.local${req.originalUrl}`)
-      const proxyBasePath = `/api/v1/container-previews/${token}`
-      const forwardPath = requestUrl.pathname.slice(proxyBasePath.length) || '/'
-      const targetUrl = `http://${DOCKER_PREVIEW_HOST}:${deployment.host_port}${forwardPath}${requestUrl.search}`
+      const proxyBasePath = buildContainerPreviewPath(token).replace(/\/$/, '')
+      const serviceBasePath = `${proxyBasePath}/services/`
+
+      let targetHostPort = enrichedDeployment.hostPort
+      let forwardPath = requestUrl.pathname.slice(proxyBasePath.length) || '/'
+
+      if (requestUrl.pathname.startsWith(serviceBasePath)) {
+        const serviceRemainder = requestUrl.pathname.slice(serviceBasePath.length)
+        const [encodedServiceName, ...pathSegments] = serviceRemainder.split('/')
+        const requestedServiceName = decodeURIComponent(encodedServiceName || '').trim()
+        if (!requestedServiceName) {
+          return res.status(404).send('Preview service was not specified.')
+        }
+
+        const selectedService = (enrichedDeployment.serviceEndpoints ?? []).find(
+          (serviceEndpoint) =>
+            normalizeComposeServiceName(serviceEndpoint.serviceName) === normalizeComposeServiceName(requestedServiceName),
+        )
+
+        if (!selectedService?.hostPort) {
+          return res.status(404).send('Preview service is not available.')
+        }
+
+        targetHostPort = selectedService.hostPort
+        const normalizedForwardPath = pathSegments.join('/')
+        forwardPath = normalizedForwardPath ? `/${normalizedForwardPath}` : '/'
+      }
+
+      if (!targetHostPort) {
+        return res.status(404).send('Preview is not available.')
+      }
+
+      const targetUrl = `http://${DOCKER_PREVIEW_HOST}:${targetHostPort}${forwardPath}${requestUrl.search}`
 
       const headers = new Headers()
       for (const [key, value] of Object.entries(req.headers)) {

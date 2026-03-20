@@ -126,6 +126,15 @@ function pickSelectedJobId(
   return jobsForDefinition[0]?.id ?? null
 }
 
+function getServiceEndpointLabel(deployment: ProjectContainerDeployment, serviceName?: string | null) {
+  const normalizedServiceName = typeof serviceName === 'string' && serviceName.trim() ? serviceName.trim() : null
+  if (normalizedServiceName) {
+    return normalizedServiceName
+  }
+
+  return deployment.imageReference?.startsWith('compose:') ? 'service' : 'app'
+}
+
 export function ProjectDockerTab({
   projectId,
   currentUserName = '',
