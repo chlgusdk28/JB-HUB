@@ -11,16 +11,13 @@ import compression from 'compression'
 import fileUpload from 'express-fileupload'
 import helmet from 'helmet'
 import { createToolsRouter } from './tools-api.js'
+import { ensureRuntimeLayout, SQLITE_DB_PATH, UPLOAD_TEMP_DIR } from './runtime-paths.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const DB_PATH = join(process.cwd(), 'data', 'jbhub.db')
+const DB_PATH = SQLITE_DB_PATH
 
 // 데이터 디렉토리 생성
-mkdirSync(join(process.cwd(), 'data'), { recursive: true })
-mkdirSync(join(process.cwd(), 'project-files'), { recursive: true })
-mkdirSync(join(process.cwd(), 'docker-uploads'), { recursive: true })
-mkdirSync(join(process.cwd(), 'docker-temp'), { recursive: true })
-mkdirSync(join(process.cwd(), 'upload-temp'), { recursive: true })
+ensureRuntimeLayout()
 
 // 환경 변수
 const API_PORT = Number(process.env.API_PORT) || 8787
@@ -45,13 +42,38 @@ app.use(fileUpload({
   abortOnLimit: true,
   limits: { fileSize: 64 * 1024 * 1024 },
   useTempFiles: true,
-  tempFileDir: join(process.cwd(), 'upload-temp'),
+  tempFileDir: UPLOAD_TEMP_DIR,
 }))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // 데이터베이스 초기화
 let db
+
+function parseTags(rawTags) {
+  if (Array.isArray(rawTags)) {
+    return rawTags.filter((value) => typeof value === 'string')
+  }
+
+  if (typeof rawTags !== 'string' || rawTags.trim().length === 0) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(rawTags)
+    return Array.isArray(parsed) ? parsed.filter((value) => typeof value === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function toProjectDto(project) {
+  return {
+    ...project,
+    tags: parseTags(project?.tags),
+    is_new: Boolean(project?.is_new),
+  }
+}
 
 function initDatabase() {
   db = new Database(DB_PATH)
@@ -332,14 +354,7 @@ app.get('/api/v1/projects', (req, res) => {
   params.push(Math.min(Number(limit), 200))
 
   const rows = db.prepare(query).all(...params)
-
-  const projects = rows.map(p => ({
-    ...p,
-    tags: p.tags ? JSON.parse(p.tags) : [],
-    is_new: Boolean(p.is_new)
-  }))
-
-  res.json({ projects })
+  res.json({ projects: rows.map(toProjectDto) })
 })
 
 // 프로젝트 상세
@@ -352,11 +367,7 @@ app.get('/api/v1/projects/:id', (req, res) => {
   // 조회수 증가
   db.prepare('UPDATE projects SET views = views + 1 WHERE id = ?').run(req.params.id)
 
-  res.json({
-    ...project,
-    tags: project.tags ? JSON.parse(project.tags) : [],
-    is_new: Boolean(project.is_new)
-  })
+  res.json(toProjectDto(project))
 })
 
 // 프로젝트 생성
@@ -389,11 +400,7 @@ app.post('/api/v1/projects', (req, res, next) => {
 
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid)
     return res.status(201).json({
-      project: {
-        ...project,
-        tags: project?.tags ? JSON.parse(project.tags) : [],
-        is_new: Boolean(project?.is_new)
-      }
+      project: toProjectDto(project)
     })
   } catch (error) {
     return next(error)
@@ -422,11 +429,7 @@ app.post('/api/v1/projects', authenticateJWT, (req, res) => {
 
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid)
   res.status(201).json({
-    project: {
-      ...project,
-      tags: JSON.parse(project.tags),
-      is_new: Boolean(project.is_new)
-    }
+    project: toProjectDto(project)
   })
 })
 
@@ -447,11 +450,7 @@ app.put('/api/v1/projects/:id', authenticateJWT, (req, res) => {
   `).run(title, description, department, tagsJson, req.params.id)
 
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id)
-  res.json({
-    ...project,
-    tags: JSON.parse(project.tags),
-    is_new: Boolean(project.is_new)
-  })
+  res.json(toProjectDto(project))
 })
 
 // 프로젝트 삭제
@@ -495,8 +494,8 @@ app.get('/api/v1/rankings', (_req, res) => {
   const byViews = db.prepare('SELECT *, rank() over (order by views desc) as rank FROM projects ORDER BY views DESC LIMIT 10').all()
 
   res.json({
-    byStars: byStars.map(p => ({ ...p, tags: JSON.parse(p.tags || '[]'), is_new: Boolean(p.is_new) })),
-    byViews: byViews.map(p => ({ ...p, tags: JSON.parse(p.tags || '[]'), is_new: Boolean(p.is_new) }))
+    byStars: byStars.map(toProjectDto),
+    byViews: byViews.map(toProjectDto)
   })
 })
 
@@ -556,13 +555,17 @@ app.post('/api/v1/users', authenticateJWT, requireAdmin, (req, res) => {
 })
 
 // Docker 기능 - 기본 응답
-app.get('/api/v1/projects/:id/docker', (req, res) => {
-  const images = db.prepare('SELECT id, image_name, image_tag, status, created_at FROM docker_build_jobs WHERE project_id = ? ORDER BY id DESC LIMIT 10').get(req.params.id)
-  res.json({ images: images || [] })
-})
 
 // 서버 시작
 initDatabase()
+
+app.use((error, req, res, _next) => {
+  console.error('[sqlite-api]', req.method, req.originalUrl, error)
+
+  res.status(500).json({
+    error: 'Internal server error.',
+  })
+})
 
 app.listen(API_PORT, () => {
   console.log(`[sqlite-api] http://127.0.0.1:${API_PORT}`)

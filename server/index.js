@@ -11,12 +11,7 @@ import mysql from 'mysql2/promise'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import { seedProjects } from './seed-projects.js'
-import {
-  attachAdminDockerRoutes,
-  cleanupProjectDockerResources,
-  setupDockerRoutes,
-  startDockerBuildJobWorker,
-} from './docker-api.js'
+import { ensureRuntimeLayout, PROJECT_FILES_ROOT, UPLOAD_TEMP_DIR } from './runtime-paths.js'
 import {
   attachSignupPlatformAdminRoutes,
   createSignupPlatformPublicRouter,
@@ -88,8 +83,6 @@ const ADMIN_SESSION_TIMEOUT = readEnvNumber('ADMIN_SESSION_TIMEOUT_MS', 3600000)
 const ADMIN_MAX_LOGIN_ATTEMPTS = readEnvNumber('ADMIN_MAX_LOGIN_ATTEMPTS', 5)
 const ADMIN_LOCKOUT_DURATION = readEnvNumber('ADMIN_LOCKOUT_DURATION_MS', 900000) // 15 minutes
 const AUTH_STATE_CLEANUP_INTERVAL_MS = readEnvNumber('AUTH_STATE_CLEANUP_INTERVAL_MS', 300000) // 5 minutes
-const PROJECT_FILES_ROOT = path.join(process.cwd(), 'project-files')
-const UPLOAD_TEMP_DIR = path.join(process.cwd(), 'upload-temp')
 const MAX_TEXT_PREVIEW_BYTES = 256 * 1024
 const TEXT_FILE_EXTENSIONS = new Set([
   '.c',
@@ -146,13 +139,7 @@ const loginAttempts = new Map() // IP -> { count, lastAttempt, lockedUntil }
 const refreshTokens = new Map() // tokenId -> { userId, username, expiresAt }
 const ADMIN_ALLOWED_ROLES = new Set(['super_admin', 'admin'])
 
-if (!fs.existsSync(PROJECT_FILES_ROOT)) {
-  fs.mkdirSync(PROJECT_FILES_ROOT, { recursive: true })
-}
-
-if (!fs.existsSync(UPLOAD_TEMP_DIR)) {
-  fs.mkdirSync(UPLOAD_TEMP_DIR, { recursive: true })
-}
+ensureRuntimeLayout()
 
 function ensureSafeDbName(dbName) {
   if (!/^[A-Za-z0-9_]+$/.test(dbName)) {
@@ -1416,8 +1403,6 @@ async function deleteProjectById(pool, projectId) {
     return 0
   }
 
-  await cleanupProjectDockerResources(pool, normalizedProjectId)
-
   const [result] = await pool.query('DELETE FROM projects WHERE id = ?', [normalizedProjectId])
   const affectedRows = Number(result?.affectedRows ?? 0)
 
@@ -2262,12 +2247,6 @@ function createAdminRouter(pool) {
     createAuditLog,
   })
   attachAdminSiteContentRoutes(router, pool, {
-    authenticateJWT,
-    requireAdmin,
-    handleApiError,
-    createAuditLog,
-  })
-  attachAdminDockerRoutes(router, pool, {
     authenticateJWT,
     requireAdmin,
     handleApiError,
@@ -4484,13 +4463,6 @@ async function start() {
   })
 
   // Docker API routes (폐쇄망 환경: 로컬 Docker 데몬 사용)
-  setupDockerRoutes(app, pool, {
-    handleApiError,
-    getProjectById,
-    readProjectActorName,
-    authorizeProjectWrite: hasProjectWriteAccess,
-  })
-  const stopDockerBuildWorker = await startDockerBuildJobWorker(pool)
 
   // Catch-all for unmatched API routes
   app.use('/api/*splat', (_req, res) => {
@@ -4528,8 +4500,6 @@ async function start() {
     }
 
     clearInterval(authStateCleanupInterval)
-    stopDockerBuildWorker?.()
-
     // Stop accepting new connections
     server.close(() => {
       console.log('[api] server closed')

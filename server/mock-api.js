@@ -2,17 +2,15 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import fileUpload from 'express-fileupload'
-import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { seedProjects } from './seed-projects.js'
 import { createToolsRouter } from './tools-api.js'
+import { ensureRuntimeLayout, UPLOAD_TEMP_DIR } from './runtime-paths.js'
 
 const API_PORT = Number.parseInt(process.env.API_PORT || '8787', 10)
 const app = express()
-const UPLOAD_TEMP_DIR = join(process.cwd(), 'upload-temp')
 
-mkdirSync(UPLOAD_TEMP_DIR, { recursive: true })
+ensureRuntimeLayout()
 
 // Middleware
 app.use(cors())

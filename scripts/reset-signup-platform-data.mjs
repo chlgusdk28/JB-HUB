@@ -1,8 +1,7 @@
 import 'dotenv/config'
 import fs from 'node:fs/promises'
-import path from 'node:path'
 import mysql from 'mysql2/promise'
-import { cleanupProjectDockerResources } from '../server/docker-api.js'
+import { BACKUP_ROOT, PROJECT_FILES_ROOT, ensureRuntimeLayout } from '../server/runtime-paths.js'
 
 function readEnvString(key, fallback = '') {
   const value = process.env[key]
@@ -26,10 +25,8 @@ const DB_PASSWORD = readEnvString('DB_PASSWORD', '')
 const DB_NAME = readEnvString('DB_NAME', 'jbhub')
 
 const removablePaths = [
-  path.join(process.cwd(), 'project-files'),
-  path.join(process.cwd(), 'docker-uploads'),
-  path.join(process.cwd(), 'docker-temp'),
-  path.join(process.cwd(), 'backup'),
+  PROJECT_FILES_ROOT,
+  BACKUP_ROOT,
 ]
 
 async function tableExists(pool, tableName) {
@@ -46,6 +43,8 @@ async function tableExists(pool, tableName) {
 }
 
 async function main() {
+  ensureRuntimeLayout()
+
   const pool = mysql.createPool({
     host: DB_HOST,
     port: DB_PORT,
@@ -59,10 +58,6 @@ async function main() {
   try {
     const [projectRows] = await pool.query('SELECT id FROM projects ORDER BY id')
     const projectIds = projectRows.map((row) => Number(row.id)).filter((value) => Number.isFinite(value) && value > 0)
-
-    for (const projectId of projectIds) {
-      await cleanupProjectDockerResources(pool, projectId)
-    }
 
     const existingTables = {
       dockerDeployments: await tableExists(pool, 'docker_deployments'),

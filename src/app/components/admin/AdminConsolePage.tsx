@@ -205,7 +205,18 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
         fetchAdminSiteContent(currentSession),
         fetchAdminAuditLogs(currentSession, 80),
         fetchAdminBackups(currentSession),
-        fetchAdminServiceOverview(currentSession),
+        fetchAdminServiceOverview(currentSession).catch(() => ({
+          runtime: {
+            dockerVersion: null,
+            hostContainerCount: 0,
+            imageCount: 0,
+            deploymentCount: 0,
+            containerError: null,
+          },
+          images: [],
+          deployments: [],
+          hostContainers: [],
+        })),
       ])
       setHealth(nextHealth)
       setStats(nextStats.stats)

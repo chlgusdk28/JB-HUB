@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Download, GitFork, Link2, MessageSquare, Send, Star, TrendingUp } from 'lucide-react'
 import type { Project } from '../lib/project-utils'
 import { FilesTab } from './FilesTab'
-import { ProjectDockerTab } from './ProjectDockerTab'
 import { QuietTabs } from './QuietTabs'
 import { MarkdownContent, MetricCard, PageHeader, PageShell, Pill } from './common'
 import { OpalButton } from './opal/OpalButton'
@@ -30,7 +29,6 @@ interface LocalComment {
 const DETAIL_TABS = [
   { id: 'overview', label: '개요' },
   { id: 'files', label: '파일' },
-  { id: 'docker', label: 'Docker' },
   { id: 'metrics', label: '지표' },
   { id: 'comments', label: '댓글' },
 ]
@@ -292,14 +290,6 @@ export function QuietProjectDetail({
           currentUserName={currentUserName}
           projectAuthor={project.author}
           canUpload={canManageFiles}
-        />
-      ) : null}
-
-      {activeTab === 'docker' ? (
-        <ProjectDockerTab
-          projectId={project.id}
-          currentUserName={currentUserName}
-          projectAuthor={project.author}
         />
       ) : null}
 

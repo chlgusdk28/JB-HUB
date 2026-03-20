@@ -28,14 +28,13 @@ Thumbs.db
 
 # Runtime / local artifacts
 .runtime/
-upload-temp/
-docker-temp/
-docker-uploads/
 artifacts/
-backup/
 final/
 final2/
 final-*/
-data/*.db
-data/*.db-shm
-data/*.db-wal
+
+# Legacy local runtime folders kept ignored during migration
+upload-temp/
+project-files/
+backup/
+data/
