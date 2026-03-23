@@ -75,6 +75,19 @@ export interface ProjectContainerOverview {
     available: boolean
     version: string | null
     error: string | null
+    kind?: string | null
+    binary?: string | null
+    label?: string | null
+    composeCommand?: string | null
+  }
+  runtime?: {
+    available: boolean
+    version: string | null
+    error: string | null
+    kind?: string | null
+    binary?: string | null
+    label?: string | null
+    composeCommand?: string | null
   }
   definitions: ProjectContainerDefinition[]
   buildJobs: ProjectContainerBuildJob[]

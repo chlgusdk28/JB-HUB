@@ -158,8 +158,9 @@ function formatStatusLabel(status?: string | null) {
   }
 }
 
-function formatDockerAvailabilityLabel(available: boolean, version?: string | null) {
-  return available ? `Docker 사용 가능${version ? ` (${version})` : ''}` : 'Docker 사용 불가'
+function formatDockerAvailabilityLabel(available: boolean, version?: string | null, runtimeLabel?: string | null) {
+  const label = typeof runtimeLabel === 'string' && runtimeLabel.trim() ? runtimeLabel.trim() : 'Docker Engine'
+  return available ? `${label} 사용 가능${version ? ` (${version})` : ''}` : `${label} 사용 불가`
 }
 
 function formatDockerMessage(message?: string | null) {
@@ -217,6 +218,7 @@ function formatDockerMessage(message?: string | null) {
     return '미리보기 서비스를 사용할 수 없습니다.'
   }
   if (
+    trimmed === 'Container runtime is unavailable.' ||
     trimmed === 'Docker engine is unavailable.' ||
     normalizedMessage.includes('failed to connect to the docker api') ||
     normalizedMessage.includes('cannot connect to the docker daemon') ||
@@ -258,6 +260,7 @@ export function ProjectDockerTab({
   const [dockerfile, setDockerfile] = useState<File | null>(null)
   const [composeFile, setComposeFile] = useState<File | null>(null)
   const [contextTar, setContextTar] = useState<File | null>(null)
+  const runtimeStatus = overview?.runtime ?? overview?.docker ?? null
   const hasContextTar = Boolean(contextTar)
   const dockerComposeUploadLabel = hasContextTar ? '컨텍스트 업로드 후 바로 빌드' : '정의 갱신 후 바로 빌드'
   const dockerComposeUploadHint = hasContextTar
@@ -535,12 +538,16 @@ export function ProjectDockerTab({
             <div className="flex flex-wrap gap-2">
               <span
                 className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${buildStatusTone(
-                  overview?.docker.available ? 'running' : 'failed',
+                  runtimeStatus?.available ? 'running' : 'failed',
                 )}`}
               >
-                {formatDockerAvailabilityLabel(Boolean(overview?.docker.available), overview?.docker.version)}
+                {formatDockerAvailabilityLabel(
+                  Boolean(runtimeStatus?.available),
+                  runtimeStatus?.version,
+                  runtimeStatus?.label,
+                )}
               </span>
-              {overview?.docker.error ? <Pill variant="subtle">{formatDockerMessage(overview.docker.error)}</Pill> : null}
+              {runtimeStatus?.error ? <Pill variant="subtle">{formatDockerMessage(runtimeStatus.error)}</Pill> : null}
             </div>
           </div>
 
@@ -729,7 +736,7 @@ export function ProjectDockerTab({
                 <OpalButton
                   size="sm"
                   variant="primary"
-                  disabled={!canManage || !currentUserName.trim() || !overview?.docker.available}
+                  disabled={!canManage || !currentUserName.trim() || !runtimeStatus?.available}
                   icon={<Play className="h-4 w-4" />}
                   onClick={() => void handleBuild(visibleDefinition)}
                 >

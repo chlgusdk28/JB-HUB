@@ -1,0 +1,17 @@
+[Unit]
+Description=JB-HUB Appliance
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/jbhub/app
+EnvironmentFile=/etc/jbhub/jbhub-appliance.env
+ExecStart=/usr/bin/node server/sqlite-api.js
+Restart=always
+RestartSec=5
+User=jbhub
+Group=jbhub
+
+[Install]
+WantedBy=multi-user.target

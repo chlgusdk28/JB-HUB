@@ -10,6 +10,13 @@ import {
   DOCKER_LOGS_ROOT,
   PROJECT_FILES_ROOT,
 } from './runtime-paths.js'
+import {
+  buildContainerComposeInvocation,
+  buildContainerRuntimeInvocation,
+  extractContainerRuntimeVersion,
+  getContainerRuntimeConfig,
+  getContainerRuntimeUnavailableMessage,
+} from './container-runtime.js'
 
 const BUILD_POLL_INTERVAL_MS = 2500
 const DEFAULT_BUILD_TIMEOUT_MS = 10 * 60 * 1000
@@ -29,6 +36,7 @@ const CONTAINER_RESTRICTED_FILE_PATTERNS = [
   /^(authorized_keys|known_hosts)$/i,
   /\.(key|pem|p12|pfx|jks|kdbx)$/i,
 ]
+const CONTAINER_RUNTIME = getContainerRuntimeConfig()
 
 function pathExists(targetPath) {
   try {
@@ -349,7 +357,7 @@ async function loadOfflineImagesIfPresent(bundleDir, logPath) {
       throw new Error(packageResult.output.trim() || 'Offline image bundle could not be packaged.')
     }
 
-    const loadResult = await runLoggedProcess('docker', ['load', '-i', archivePath], {
+    const loadResult = await runContainerRuntimeProcess(['load', '-i', archivePath], {
       cwd: bundleDir,
       logPath,
       timeoutMs: DEFAULT_BUILD_TIMEOUT_MS,
@@ -591,6 +599,78 @@ function buildContainerPreviewPath(deploymentToken, serviceName = null) {
   return `${basePath}/`
 }
 
+function rewritePreviewHtmlPaths(text, previewBasePath) {
+  const normalizedPreviewBasePath = String(previewBasePath || '').replace(/\/$/, '')
+  if (!normalizedPreviewBasePath) {
+    return String(text ?? '')
+  }
+
+  return String(text ?? '')
+    .replace(/\b(href|src|action|poster)=("|')\/(?!\/)/gi, (_match, attributeName, quote) => {
+      return `${attributeName}=${quote}${normalizedPreviewBasePath}/`
+    })
+    .replace(/\bsrcset=("|')([^"']*)\1/gi, (_match, quote, rawValue) => {
+      const rewrittenValue = String(rawValue)
+        .split(',')
+        .map((entry) => {
+          const trimmedEntry = entry.trim()
+          if (!trimmedEntry) {
+            return trimmedEntry
+          }
+
+          const srcsetMatch = trimmedEntry.match(/^(\S+)(\s+.+)?$/)
+          if (!srcsetMatch) {
+            return trimmedEntry
+          }
+
+          const [, candidateUrl, descriptor = ''] = srcsetMatch
+          if (candidateUrl.startsWith('/') && !candidateUrl.startsWith('//')) {
+            return `${normalizedPreviewBasePath}${candidateUrl}${descriptor}`
+          }
+
+          return trimmedEntry
+        })
+        .join(', ')
+
+      return `srcset=${quote}${rewrittenValue}${quote}`
+    })
+}
+
+function rewritePreviewCssPaths(text, previewBasePath) {
+  const normalizedPreviewBasePath = String(previewBasePath || '').replace(/\/$/, '')
+  if (!normalizedPreviewBasePath) {
+    return String(text ?? '')
+  }
+
+  return String(text ?? '')
+    .replace(/url\((["']?)\/(?!\/)/gi, (_match, quote) => `url(${quote}${normalizedPreviewBasePath}/`)
+    .replace(/@import\s+(["'])\/(?!\/)/gi, (_match, quote) => `@import ${quote}${normalizedPreviewBasePath}/`)
+}
+
+function rewritePreviewLocationHeader(locationValue, previewBasePath, targetHostPort) {
+  const normalizedLocationValue = typeof locationValue === 'string' ? locationValue.trim() : ''
+  const normalizedPreviewBasePath = String(previewBasePath || '').replace(/\/$/, '')
+  if (!normalizedLocationValue || !normalizedPreviewBasePath) {
+    return normalizedLocationValue
+  }
+
+  if (normalizedLocationValue.startsWith('/') && !normalizedLocationValue.startsWith('//')) {
+    return `${normalizedPreviewBasePath}${normalizedLocationValue}`
+  }
+
+  try {
+    const parsedUrl = new URL(normalizedLocationValue)
+    const targetOrigin = `http://${DOCKER_PREVIEW_HOST}:${targetHostPort}`
+    if (parsedUrl.origin === targetOrigin) {
+      return `${normalizedPreviewBasePath}${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
+    }
+  } catch {
+    // Leave non-URL redirect values untouched.
+  }
+
+  return normalizedLocationValue
+}
+
 function serializeServiceEndpoint({
   deploymentToken,
   serviceName = null,
@@ -710,9 +790,19 @@ function runLoggedProcess(command, args, { cwd = process.cwd(), logPath, timeout
   })
 }
 
-async function getDockerRuntimeStatus() {
+function runContainerRuntimeProcess(args, options) {
+  const invocation = buildContainerRuntimeInvocation(CONTAINER_RUNTIME, args)
+  return runLoggedProcess(invocation.command, invocation.args, options)
+}
+
+function runContainerComposeProcess(args, options) {
+  const invocation = buildContainerComposeInvocation(CONTAINER_RUNTIME, args)
+  return runLoggedProcess(invocation.command, invocation.args, options)
+}
+
+async function getContainerRuntimeStatus() {
   try {
-    const result = await runLoggedProcess('docker', ['version', '--format', '{{.Server.Version}}'], {
+    const result = await runContainerRuntimeProcess(['version'], {
       logPath: null,
       timeoutMs: 5000,
     })
@@ -720,21 +810,33 @@ async function getDockerRuntimeStatus() {
     if (result.exitCode !== 0) {
       return {
         available: false,
-        version: null,
-        error: result.output.trim() || 'Docker engine is unavailable.',
+        kind: CONTAINER_RUNTIME.kind,
+        binary: CONTAINER_RUNTIME.binary,
+        label: CONTAINER_RUNTIME.label,
+        composeCommand: CONTAINER_RUNTIME.composeCommand.join(' '),
+        version: extractContainerRuntimeVersion(result.output),
+        error: result.output.trim() || getContainerRuntimeUnavailableMessage(CONTAINER_RUNTIME),
       }
     }
 
     return {
       available: true,
-      version: result.output.trim() || null,
+      kind: CONTAINER_RUNTIME.kind,
+      binary: CONTAINER_RUNTIME.binary,
+      label: CONTAINER_RUNTIME.label,
+      composeCommand: CONTAINER_RUNTIME.composeCommand.join(' '),
+      version: extractContainerRuntimeVersion(result.output),
       error: null,
     }
   } catch (error) {
     return {
       available: false,
+      kind: CONTAINER_RUNTIME.kind,
+      binary: CONTAINER_RUNTIME.binary,
+      label: CONTAINER_RUNTIME.label,
+      composeCommand: CONTAINER_RUNTIME.composeCommand.join(' '),
       version: null,
-      error: error instanceof Error ? error.message : 'Docker engine is unavailable.',
+      error: error instanceof Error ? error.message : getContainerRuntimeUnavailableMessage(CONTAINER_RUNTIME),
     }
   }
 }
@@ -1153,9 +1255,8 @@ async function generatePreviewComposeFile({
 }) {
   await ensureDirectory(DOCKER_CONTEXTS_ROOT)
 
-  const configResult = await runLoggedProcess(
-    'docker',
-    ['compose', '-p', composeProjectName, '-f', composeFileAbsolutePath, 'config', '--format', 'json'],
+  const configResult = await runContainerComposeProcess(
+    ['-p', composeProjectName, '-f', composeFileAbsolutePath, 'config', '--format', 'json'],
     {
       cwd: path.dirname(composeFileAbsolutePath),
       logPath,
@@ -1386,9 +1487,8 @@ async function readComposePsEntriesForDeployment(deploymentRow) {
 
   const composeProjectName = deploymentRow.container_name || imageReference.slice('compose:'.length)
   const composeFileAbsolutePath = path.join(definitionDir, composeFileName)
-  const psResult = await runLoggedProcess(
-    'docker',
-    ['compose', '-p', composeProjectName, '-f', composeFileAbsolutePath, 'ps', '--format', 'json'],
+  const psResult = await runContainerComposeProcess(
+    ['-p', composeProjectName, '-f', composeFileAbsolutePath, 'ps', '--format', 'json'],
     {
       cwd: path.dirname(composeFileAbsolutePath),
       logPath: null,
@@ -1456,14 +1556,10 @@ async function stopDockerDeployment(db, deploymentRow, { remove = true } = {}) {
     let errorMessage = null
 
     try {
-      const listResult = await runLoggedProcess(
-        'docker',
-        ['ps', '-aq', '--filter', `label=com.docker.compose.project=${composeProjectName}`],
-        {
-          logPath: null,
-          timeoutMs: 30000,
-        },
-      )
+      const listResult = await runContainerRuntimeProcess(['ps', '-aq', '--filter', `label=com.docker.compose.project=${composeProjectName}`], {
+        logPath: null,
+        timeoutMs: 30000,
+      })
 
       if (listResult.exitCode !== 0) {
         errorMessage = listResult.output.trim() || 'Failed to inspect compose containers.'
@@ -1474,7 +1570,7 @@ async function stopDockerDeployment(db, deploymentRow, { remove = true } = {}) {
           .filter(Boolean)
 
         if (containerIds.length > 0) {
-          const removeResult = await runLoggedProcess('docker', ['rm', '-f', ...containerIds], {
+          const removeResult = await runContainerRuntimeProcess(['rm', '-f', ...containerIds], {
             logPath: null,
             timeoutMs: 60000,
           })
@@ -1509,7 +1605,7 @@ async function stopDockerDeployment(db, deploymentRow, { remove = true } = {}) {
   let errorMessage = null
 
   try {
-    const result = await runLoggedProcess('docker', args, {
+    const result = await runContainerRuntimeProcess(args, {
       logPath: null,
       timeoutMs: 30000,
     })
@@ -1595,14 +1691,10 @@ async function runDockerPreview({
     }
     runArgs.push(imageReference)
 
-    const runResult = await runLoggedProcess(
-      'docker',
-      runArgs,
-      {
-        logPath: getBuildLogPath(jobId),
-        timeoutMs: 120000,
-      },
-    )
+    const runResult = await runContainerRuntimeProcess(runArgs, {
+      logPath: getBuildLogPath(jobId),
+      timeoutMs: 120000,
+    })
 
     if (runResult.exitCode !== 0) {
       throw new Error(runResult.output.trim() || 'Container failed to start.')
@@ -1610,7 +1702,7 @@ async function runDockerPreview({
 
     const containerId = runResult.output.trim().split(/\s+/).filter(Boolean).at(-1) ?? null
     if (!hostPort && containerId && containerPort) {
-      const portResult = await runLoggedProcess('docker', ['port', containerId, `${containerPort}/tcp`], {
+      const portResult = await runContainerRuntimeProcess(['port', containerId, `${containerPort}/tcp`], {
         logPath: null,
         timeoutMs: 30000,
       })
@@ -1736,9 +1828,8 @@ async function runDockerComposePreview({
   })
 
   try {
-    const upResult = await runLoggedProcess(
-      'docker',
-      ['compose', '-p', composeProjectName, '-f', previewComposeFilePath, 'up', '-d', '--build'],
+    const upResult = await runContainerComposeProcess(
+      ['-p', composeProjectName, '-f', previewComposeFilePath, 'up', '-d', '--build'],
       {
         cwd: path.dirname(composeFileAbsolutePath),
         logPath: getBuildLogPath(jobId),
@@ -1750,9 +1841,8 @@ async function runDockerComposePreview({
       throw new Error(upResult.output.trim() || 'Compose stack failed to start.')
     }
 
-    const psResult = await runLoggedProcess(
-      'docker',
-      ['compose', '-p', composeProjectName, '-f', previewComposeFilePath, 'ps', '--format', 'json'],
+    const psResult = await runContainerComposeProcess(
+      ['-p', composeProjectName, '-f', previewComposeFilePath, 'ps', '--format', 'json'],
       {
         cwd: path.dirname(composeFileAbsolutePath),
         logPath: null,
@@ -1777,14 +1867,10 @@ async function runDockerComposePreview({
         })
       : false
 
-    const containerListResult = await runLoggedProcess(
-      'docker',
-      ['ps', '-aq', '--filter', `label=com.docker.compose.project=${composeProjectName}`],
-      {
-        logPath: null,
-        timeoutMs: 30000,
-      },
-    )
+    const containerListResult = await runContainerRuntimeProcess(['ps', '-aq', '--filter', `label=com.docker.compose.project=${composeProjectName}`], {
+      logPath: null,
+      timeoutMs: 30000,
+    })
 
     const containerId = containerListResult.output
       .split(/\s+/)
@@ -1941,12 +2027,15 @@ async function processDockerBuildJob(db, jobRow) {
     return
   }
 
-  const dockerRuntime = await getDockerRuntimeStatus()
-  if (!dockerRuntime.available) {
+  const containerRuntime = await getContainerRuntimeStatus()
+  if (!containerRuntime.available) {
     db.prepare(
       'UPDATE docker_build_jobs SET status = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?',
-    ).run('failed', dockerRuntime.error || 'Docker engine is unavailable.', jobId)
-    appendToLogFile(logPath, `\nDocker runtime error: ${dockerRuntime.error || 'Docker engine is unavailable.'}\n`)
+    ).run('failed', containerRuntime.error || getContainerRuntimeUnavailableMessage(CONTAINER_RUNTIME), jobId)
+    appendToLogFile(
+      logPath,
+      `\nContainer runtime error: ${containerRuntime.error || getContainerRuntimeUnavailableMessage(CONTAINER_RUNTIME)}\n`,
+    )
     return
   }
 
@@ -1960,8 +2049,7 @@ async function processDockerBuildJob(db, jobRow) {
      WHERE id = ?`,
   ).run(imageName, imageTag, imageReference, containerPort, contextPath, dockerfilePath, jobId)
 
-  const buildResult = await runLoggedProcess(
-    'docker',
+  const buildResult = await runContainerRuntimeProcess(
     ['build', '--pull=false', '-f', dockerfileAbsolutePath, '-t', imageReference, contextAbsolutePath],
     {
       cwd: buildContextRoot,
@@ -2082,8 +2170,11 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         return res.status(404).json({ error: 'Project not found.' })
       }
 
+      const runtimeStatus = await getContainerRuntimeStatus()
+
       return res.json({
-        docker: await getDockerRuntimeStatus(),
+        docker: runtimeStatus,
+        runtime: runtimeStatus,
         definitions: await scanProjectContainerDefinitions(projectId, db),
         buildJobs: db.prepare('SELECT * FROM docker_build_jobs WHERE project_id = ? ORDER BY id DESC LIMIT 20').all(projectId).map(serializeBuildJob),
         deployments: await Promise.all(
@@ -2468,6 +2559,7 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
       const requestUrl = new URL(`http://preview.local${req.originalUrl}`)
       const proxyBasePath = buildContainerPreviewPath(token).replace(/\/$/, '')
       const serviceBasePath = `${proxyBasePath}/services/`
+      let activePreviewBasePath = proxyBasePath
 
       let targetHostPort = enrichedDeployment.hostPort
       let forwardPath = requestUrl.pathname.slice(proxyBasePath.length) || '/'
@@ -2490,6 +2582,7 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         }
 
         targetHostPort = selectedService.hostPort
+        activePreviewBasePath = buildContainerPreviewPath(token, selectedService.serviceName || requestedServiceName).replace(/\/$/, '')
         const normalizedForwardPath = pathSegments.join('/')
         forwardPath = normalizedForwardPath ? `/${normalizedForwardPath}` : '/'
       }
@@ -2525,15 +2618,43 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         duplex: body ? 'half' : undefined,
       })
 
+      const responseContentType = response.headers.get('content-type') || ''
+      let rewrittenLocationHeader = null
+
       res.status(response.status)
       for (const [key, value] of response.headers) {
         const normalizedKey = key.toLowerCase()
-        if (['content-security-policy', 'x-frame-options', 'content-encoding'].includes(normalizedKey)) continue
+        if (normalizedKey === 'location') {
+          rewrittenLocationHeader = rewritePreviewLocationHeader(value, activePreviewBasePath, targetHostPort)
+          continue
+        }
+        if (['content-security-policy', 'x-frame-options', 'content-encoding', 'content-length', 'transfer-encoding'].includes(normalizedKey)) continue
         res.setHeader(key, value)
+      }
+
+      if (rewrittenLocationHeader) {
+        res.setHeader('location', rewrittenLocationHeader)
+      }
+
+      if (req.method === 'HEAD' || [204, 304].includes(response.status)) {
+        res.end()
+        return
       }
 
       if (!response.body) {
         res.end()
+        return
+      }
+
+      if (/\btext\/html\b|\bapplication\/xhtml\+xml\b/i.test(responseContentType)) {
+        const rewrittenHtml = rewritePreviewHtmlPaths(await response.text(), activePreviewBasePath)
+        res.send(rewrittenHtml)
+        return
+      }
+
+      if (/\btext\/css\b/i.test(responseContentType)) {
+        const rewrittenCss = rewritePreviewCssPaths(await response.text(), activePreviewBasePath)
+        res.send(rewrittenCss)
         return
       }
 

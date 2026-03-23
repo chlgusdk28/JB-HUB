@@ -144,6 +144,14 @@ npm run dev
 - 웹: `http://127.0.0.1:3000`
 - API 헬스체크: `http://127.0.0.1:8787/api/v1/health`
 
+### 6.4 폐쇄망 어플라이언스 번들 생성
+
+```bash
+npm run package:appliance
+```
+
+생성 결과는 `artifacts/jbhub-appliance-YYYYMMDD/` 아래에 정리되며, 자세한 구조는 `docs/APPLIANCE_ARCHITECTURE.md`를 따릅니다.
+
 ## 7. 실행 모드
 
 ### 7.1 기본 개발 모드: MySQL + Vite + Express
