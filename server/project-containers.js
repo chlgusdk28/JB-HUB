@@ -531,6 +531,12 @@ function resolveNumericPort(value) {
   return port
 }
 
+function waitForDelay(delayMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, Number(delayMs) || 0))
+  })
+}
+
 function inferPortFromDockerfileContents(dockerfileContents) {
   if (typeof dockerfileContents !== 'string') {
     return null
@@ -992,12 +998,30 @@ async function waitForPreview({ endpointUrl, healthcheckPath, timeoutMs }) {
   return false
 }
 
-async function removeDirectoryContents(targetPath) {
+async function removeDirectoryContents(targetPath, { retries = 6, retryDelayMs = 250 } = {}) {
   if (!pathExists(targetPath)) {
     return
   }
 
-  await fs.promises.rm(targetPath, { recursive: true, force: true })
+  let lastError = null
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      await fs.promises.rm(targetPath, { recursive: true, force: true })
+      return
+    } catch (error) {
+      lastError = error
+      const errorCode = error && typeof error === 'object' ? error.code : null
+      if (!['EBUSY', 'ENOTEMPTY', 'EPERM'].includes(String(errorCode)) || attempt === retries) {
+        throw error
+      }
+
+      await waitForDelay(retryDelayMs * (attempt + 1))
+    }
+  }
+
+  if (lastError) {
+    throw lastError
+  }
 }
 
 async function ensureDirectory(targetPath) {
@@ -1625,6 +1649,26 @@ async function stopDockerDeployment(db, deploymentRow, { remove = true } = {}) {
   return serializeDeployment(db.prepare('SELECT * FROM docker_deployments WHERE id = ?').get(deploymentRow.id))
 }
 
+async function stopActiveDefinitionDeployments(db, projectId, definitionName) {
+  const activeDeployments = db
+    .prepare(
+      `SELECT * FROM docker_deployments
+       WHERE project_id = ? AND definition_name = ? AND status IN (?, ?)
+       ORDER BY id DESC`,
+    )
+    .all(projectId, definitionName, 'running', 'starting')
+
+  for (const deploymentRow of activeDeployments) {
+    await stopDockerDeployment(db, deploymentRow)
+  }
+
+  if (activeDeployments.length > 0) {
+    await waitForDelay(500)
+  }
+
+  return activeDeployments.length
+}
+
 async function runDockerPreview({
   db,
   jobId,
@@ -2238,6 +2282,7 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
           `${requestedDefinitionName}-${Date.now()}-${sanitizePathSegment(uploadedContextTar.name, 'context.tar')}`,
         )
 
+        await stopActiveDefinitionDeployments(db, projectId, requestedDefinitionName)
         await removeDirectoryContents(definitionDir)
         await ensureDirectory(definitionDir)
         await ensureDirectory(DOCKER_ARTIFACTS_ROOT)
@@ -2289,6 +2334,7 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
           `${requestedDefinitionName}-${Date.now()}-${sanitizePathSegment(uploadedContextTar.name, 'context.tar')}`,
         )
 
+        await stopActiveDefinitionDeployments(db, projectId, requestedDefinitionName)
         await removeDirectoryContents(definitionDir)
         await ensureDirectory(definitionDir)
         await ensureDirectory(DOCKER_ARTIFACTS_ROOT)
@@ -2345,6 +2391,7 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
 
       const definitionName = definitionNames[0]
       const definitionDir = getProjectContainerDirectory(projectId, definitionName)
+      await stopActiveDefinitionDeployments(db, projectId, definitionName)
       await removeDirectoryContents(definitionDir)
       await ensureDirectory(definitionDir)
 
