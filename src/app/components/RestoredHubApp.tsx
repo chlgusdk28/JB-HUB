@@ -891,6 +891,7 @@ export default function RestoredHubApp() {
           recentProjectIds={recentProjectIds}
           onProjectClick={openProject}
           onNavigateToPage={(nextPage) => navigateToPage(nextPage as PageId)}
+          showHeader={false}
         />
       )
     }

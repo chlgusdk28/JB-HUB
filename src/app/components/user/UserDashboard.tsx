@@ -43,6 +43,7 @@ interface UserDashboardProps {
   recentProjectIds?: number[]
   onProjectClick?: (projectId: number) => void
   onNavigateToPage?: (pageId: string) => void
+  showHeader?: boolean
 }
 
 const QUICK_LINKS = [
@@ -140,6 +141,7 @@ export function UserDashboard({
   recentProjectIds = [],
   onProjectClick,
   onNavigateToPage,
+  showHeader = true,
 }: UserDashboardProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [recentActivities, setRecentActivities] = useState<RecentlyViewedItem[]>([])
@@ -199,24 +201,26 @@ export function UserDashboard({
   ]
 
   return (
-    <PageShell density="compact">
-      <PageHeader
-        eyebrow={
-          <>
-            <Activity className="h-3.5 w-3.5" />
-            Personal Dashboard
-          </>
-        }
-        title="개인 대시보드"
-        description="최근 탐색 흐름, 즐겨찾기, 자주 보는 주제를 같은 레이아웃 안에서 빠르게 확인할 수 있도록 정리한 개인 업무 보드입니다."
-        meta={
-          <>
-            <Pill variant="subtle">활동 상태: {stats?.recentlyActive ? '활성' : '시작 전'}</Pill>
-            <Pill variant="subtle">프로젝트 수 {stats?.totalProjects ?? projects.length}</Pill>
-            <Pill variant="subtle">즐겨찾기 {stats?.totalBookmarks ?? 0}</Pill>
-          </>
-        }
-      />
+    <PageShell density="compact" topInset={showHeader ? 'default' : 'none'}>
+      {showHeader ? (
+        <PageHeader
+          eyebrow={
+            <>
+              <Activity className="h-3.5 w-3.5" />
+              Personal Dashboard
+            </>
+          }
+          title="개인 대시보드"
+          description="최근 탐색 흐름, 즐겨찾기, 자주 보는 주제를 같은 레이아웃 안에서 빠르게 확인할 수 있도록 정리한 개인 업무 보드입니다."
+          meta={
+            <>
+              <Pill variant="subtle">활동 상태: {stats?.recentlyActive ? '활성' : '시작 전'}</Pill>
+              <Pill variant="subtle">프로젝트 수 {stats?.totalProjects ?? projects.length}</Pill>
+              <Pill variant="subtle">즐겨찾기 {stats?.totalBookmarks ?? 0}</Pill>
+            </>
+          }
+        />
+      ) : null}
 
       <section className="page-metric-grid">
         {summaryMetrics.map((metric) => (
