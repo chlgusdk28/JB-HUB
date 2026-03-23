@@ -219,6 +219,77 @@ function findComposeFileName(definitionDir) {
   return null
 }
 
+function listRootFileNames(definitionDir, predicate) {
+  let entries = []
+  try {
+    entries = fs.readdirSync(definitionDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((fileName) => predicate(fileName))
+}
+
+async function writeContainerDefinitionEntryFiles({
+  definitionDir,
+  uploadedDockerfile = null,
+  uploadedComposeFile = null,
+}) {
+  await ensureDirectory(definitionDir)
+
+  const filesToRemove = new Set()
+  if (uploadedDockerfile) {
+    for (const fileName of listRootFileNames(definitionDir, (name) => /dockerfile/i.test(name))) {
+      filesToRemove.add(path.join(definitionDir, fileName))
+    }
+    filesToRemove.add(path.join(definitionDir, 'Dockerfile'))
+  }
+
+  if (uploadedComposeFile) {
+    for (const composeFileName of COMPOSE_FILE_NAMES) {
+      filesToRemove.add(path.join(definitionDir, composeFileName))
+    }
+
+    const detectedComposeFileName = findComposeFileName(definitionDir)
+    if (detectedComposeFileName) {
+      filesToRemove.add(path.join(definitionDir, detectedComposeFileName))
+    }
+  }
+
+  for (const targetPath of filesToRemove) {
+    await fs.promises.rm(targetPath, { force: true })
+  }
+
+  let dockerfilePath = null
+  if (uploadedDockerfile) {
+    const dockerfileFileName = sanitizePathSegment(uploadedDockerfile.name, 'Dockerfile') || 'Dockerfile'
+    dockerfilePath = path.join(definitionDir, dockerfileFileName)
+    await uploadedDockerfile.mv(dockerfilePath)
+
+    const defaultDockerfilePath = path.join(definitionDir, 'Dockerfile')
+    if (path.basename(dockerfilePath).toLowerCase() !== 'dockerfile') {
+      await fs.promises.copyFile(dockerfilePath, defaultDockerfilePath)
+    }
+  }
+
+  let composeFilePath = null
+  if (uploadedComposeFile) {
+    const composeFileName = /\.ya?ml$/i.test(String(uploadedComposeFile.name ?? ''))
+      ? sanitizePathSegment(uploadedComposeFile.name, 'docker-compose.yml')
+      : 'docker-compose.yml'
+    composeFilePath = path.join(definitionDir, composeFileName)
+    await uploadedComposeFile.mv(composeFilePath)
+  }
+
+  return {
+    dockerfilePath,
+    composeFilePath,
+  }
+}
+
 function collectOfflineImageBundleEntries(bundleDir) {
   const includeEntries = new Set()
 
@@ -2063,30 +2134,52 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
           : null
 
       if (!req.files || (!req.files.files && !uploadedDockerfile && !uploadedComposeFile && !uploadedContextTar)) {
-        return res.status(400).json({ error: 'Upload Dockerfile + compose, compose + tar, or a Dockerfile.' })
+        return res.status(400).json({ error: 'Upload Dockerfile + compose, Dockerfile + compose + tar, compose + tar, or a Dockerfile.' })
       }
 
       const relativePaths = normalizeUploadedRelativePaths(req.body?.relativePaths)
       const requestedDefinitionName = sanitizePathSegment(req.body?.definitionName, 'main')
 
-      if (uploadedDockerfile && uploadedComposeFile && !uploadedContextTar && !req.files.files) {
+      if (uploadedDockerfile && uploadedComposeFile && uploadedContextTar && !req.files.files) {
         const definitionDir = getProjectContainerDirectory(projectId, requestedDefinitionName)
-        const dockerfileFileName = sanitizePathSegment(uploadedDockerfile.name, 'Dockerfile')
-        const composeFileName = /\.ya?ml$/i.test(String(uploadedComposeFile.name ?? ''))
-          ? sanitizePathSegment(uploadedComposeFile.name, 'docker-compose.yml')
-          : 'docker-compose.yml'
-        const dockerfilePath = path.join(definitionDir, dockerfileFileName || 'Dockerfile')
-        const composeFilePath = path.join(definitionDir, composeFileName)
+        const archivePath = path.join(
+          DOCKER_ARTIFACTS_ROOT,
+          `${requestedDefinitionName}-${Date.now()}-${sanitizePathSegment(uploadedContextTar.name, 'context.tar')}`,
+        )
 
         await removeDirectoryContents(definitionDir)
         await ensureDirectory(definitionDir)
-        await uploadedDockerfile.mv(dockerfilePath)
-        await uploadedComposeFile.mv(composeFilePath)
+        await ensureDirectory(DOCKER_ARTIFACTS_ROOT)
+        await uploadedContextTar.mv(archivePath)
 
-        const defaultDockerfilePath = path.join(definitionDir, 'Dockerfile')
-        if (path.basename(dockerfilePath).toLowerCase() !== 'dockerfile' && !pathExists(defaultDockerfilePath)) {
-          await fs.promises.copyFile(dockerfilePath, defaultDockerfilePath)
+        try {
+          await extractContextArchive(archivePath, definitionDir)
+          await writeContainerDefinitionEntryFiles({
+            definitionDir,
+            uploadedDockerfile,
+            uploadedComposeFile,
+          })
+        } catch (error) {
+          await removeDirectoryContents(definitionDir)
+          await removeDirectoryContents(archivePath)
+          throw error
         }
+
+        await removeDirectoryContents(archivePath)
+
+        return res.status(201).json({
+          uploadedDefinitionName: requestedDefinitionName,
+          definitions: await scanProjectContainerDefinitions(projectId, db),
+        })
+      }
+
+      if (uploadedDockerfile && uploadedComposeFile && !uploadedContextTar && !req.files.files) {
+        const definitionDir = getProjectContainerDirectory(projectId, requestedDefinitionName)
+        await writeContainerDefinitionEntryFiles({
+          definitionDir,
+          uploadedDockerfile,
+          uploadedComposeFile,
+        })
 
         return res.status(201).json({
           uploadedDefinitionName: requestedDefinitionName,
@@ -2100,10 +2193,6 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         }
 
         const definitionDir = getProjectContainerDirectory(projectId, requestedDefinitionName)
-        const composeFileName = /\.ya?ml$/i.test(String(uploadedComposeFile.name ?? ''))
-          ? sanitizePathSegment(uploadedComposeFile.name, 'docker-compose.yml')
-          : 'docker-compose.yml'
-        const composeFilePath = path.join(definitionDir, composeFileName)
         const archivePath = path.join(
           DOCKER_ARTIFACTS_ROOT,
           `${requestedDefinitionName}-${Date.now()}-${sanitizePathSegment(uploadedContextTar.name, 'context.tar')}`,
@@ -2112,11 +2201,14 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         await removeDirectoryContents(definitionDir)
         await ensureDirectory(definitionDir)
         await ensureDirectory(DOCKER_ARTIFACTS_ROOT)
-        await uploadedComposeFile.mv(composeFilePath)
         await uploadedContextTar.mv(archivePath)
 
         try {
           await extractContextArchive(archivePath, definitionDir)
+          await writeContainerDefinitionEntryFiles({
+            definitionDir,
+            uploadedComposeFile,
+          })
         } catch (error) {
           await removeDirectoryContents(definitionDir)
           await removeDirectoryContents(archivePath)

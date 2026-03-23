@@ -218,10 +218,18 @@ function buildComposeUploadFormData(composeFile: File, contextTar: File, definit
   return formData
 }
 
-function buildDockerComposeUploadFormData(dockerfile: File, composeFile: File, definitionName?: string) {
+function buildDockerComposeUploadFormData(
+  dockerfile: File,
+  composeFile: File,
+  definitionName?: string,
+  contextTar?: File | null,
+) {
   const formData = new FormData()
   formData.append('dockerfile', dockerfile, dockerfile.name || 'Dockerfile')
   formData.append('composeFile', composeFile, composeFile.name || 'docker-compose.yml')
+  if (contextTar) {
+    formData.append('contextTar', contextTar, contextTar.name || 'context.tar')
+  }
 
   if (definitionName) {
     formData.append('definitionName', definitionName)
@@ -271,10 +279,11 @@ export async function uploadProjectDockerComposeFiles(
   dockerfile: File,
   composeFile: File,
   options: UploadDockerComposeOptions,
+  contextTar?: File | null,
 ) {
   return await sendUploadRequest<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>(
     `${API_BASE}/projects/${projectId}/containers/upload`,
-    buildDockerComposeUploadFormData(dockerfile, composeFile, options.definitionName),
+    buildDockerComposeUploadFormData(dockerfile, composeFile, options.definitionName, contextTar),
     projectId,
     options,
   )

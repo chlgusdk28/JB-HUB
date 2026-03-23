@@ -1012,16 +1012,12 @@ export default function RestoredHubApp() {
     'project-detail': '선택한 프로젝트의 개요, 파일, Docker 배포 상태를 관리합니다.',
   }
 
-  const activeNavigationId: PageId = page === 'project-detail' ? 'projects' : page
+  const isProjectDetailPage = page === 'project-detail'
+  const activeNavigationId: PageId = isProjectDetailPage ? 'projects' : page
   const activeNavigationLabel =
     navigationSections.flatMap((section) => section.items).find((item) => item.id === activeNavigationId)?.label ?? '홈'
-  const headerTitle = page === 'project-detail' ? selectedProject?.title ?? '프로젝트 상세' : activeNavigationLabel
-  const headerDescription =
-    page === 'project-detail'
-      ? selectedProject
-        ? `${selectedProject.author} · ${selectedProject.department} · ${selectedProject.createdAt}`
-        : pageDescriptions[page]
-      : pageDescriptions[page]
+  const headerTitle = isProjectDetailPage ? '프로젝트 상세' : activeNavigationLabel
+  const headerDescription = pageDescriptions[page]
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.12),transparent_24%),linear-gradient(180deg,#f8fbff_0%,#eff4fb_42%,#f4f7fb_100%)] text-slate-900">
@@ -1075,7 +1071,7 @@ export default function RestoredHubApp() {
             <Pill variant="subtle">프로젝트 {projects.length}</Pill>
             <Pill variant="subtle">즐겨찾기 {favoriteProjectIds.length}</Pill>
             <Pill variant="subtle">최근 본 항목 {recentProjectIds.length}</Pill>
-            {selectedProject ? <Pill variant="subtle">선택 프로젝트 {selectedProject.author}</Pill> : null}
+            {selectedProject && !isProjectDetailPage ? <Pill variant="subtle">선택 프로젝트 {selectedProject.author}</Pill> : null}
           </>
         }
         sidebarLead={
@@ -1087,7 +1083,7 @@ export default function RestoredHubApp() {
                 {CURRENT_USER.name} · {CURRENT_USER.department}
               </p>
             </div>
-            {selectedProject ? (
+            {selectedProject && !isProjectDetailPage ? (
               <div className="platform-context-card">
                 <p className="platform-context-eyebrow">선택 프로젝트</p>
                 <p className="platform-context-title">{selectedProject.title}</p>
