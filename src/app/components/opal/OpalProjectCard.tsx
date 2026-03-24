@@ -1,4 +1,4 @@
-﻿import { Eye, GitFork, MessageSquare, Star } from 'lucide-react'
+import { Eye, MessageSquare, Star } from 'lucide-react'
 import { OpalTag } from './OpalTag'
 
 interface ProjectCardProps {
@@ -24,7 +24,6 @@ export function OpalProjectCard({
   author,
   department,
   stars,
-  forks,
   views,
   comments,
   tags,
@@ -35,11 +34,11 @@ export function OpalProjectCard({
 }: ProjectCardProps) {
   const isCompact = density === 'compact'
 
-  const cardPaddingClass = isCompact ? 'p-4 sm:p-5' : 'p-6 sm:p-7'
+  const cardPaddingClass = isCompact ? 'p-4 sm:p-5' : 'p-5 sm:p-6'
   const titleClass = isCompact ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'
-  const descriptionClass = isCompact ? 'mb-4 min-h-0 text-xs sm:text-sm' : 'mb-6 min-h-12 text-sm sm:text-[15px]'
-  const tagBlockClass = isCompact ? 'mb-4 flex flex-wrap gap-1' : 'mb-6 flex flex-wrap gap-1.5'
-  const metaTopClass = isCompact ? 'space-y-2 border-t border-slate-200/80 pt-3' : 'space-y-3 border-t border-slate-200/80 pt-5'
+  const descriptionClass = isCompact ? 'mb-4 min-h-0 text-xs sm:text-sm' : 'mb-5 min-h-0 text-sm sm:text-[15px]'
+  const tagBlockClass = isCompact ? 'mb-4 flex flex-wrap gap-1' : 'mb-5 flex flex-wrap gap-1.5'
+  const metaTopClass = isCompact ? 'space-y-2 border-t border-slate-200/80 pt-3' : 'space-y-2.5 border-t border-slate-200/80 pt-4'
   const statsClass = isCompact
     ? 'flex items-center gap-3 text-xs sm:gap-4'
     : 'flex items-center gap-4 text-sm sm:gap-5'
@@ -52,13 +51,8 @@ export function OpalProjectCard({
         backdropFilter: 'blur(4px)',
       }}
     >
-      <div className="opal-project-card-glow" aria-hidden="true" />
-      <div className="opal-project-card-topline" aria-hidden="true" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-slate-200/90" />
-
       <div className="opal-project-card-header">
         <span className="opal-project-meta-pill">{department}</span>
-        {createdAt ? <span className="opal-project-meta-pill">{createdAt}</span> : null}
         {isNew ? (
           <span className="opal-project-meta-pill opal-project-meta-pill-emphasis">
             신규
@@ -74,23 +68,27 @@ export function OpalProjectCard({
 
       {tags && tags.length > 0 ? (
         <div className={`opal-project-card-tags ${tagBlockClass}`}>
-          {tags.slice(0, 4).map((tag) => (
+          {tags.slice(0, 3).map((tag) => (
             <OpalTag key={tag} size="sm" variant="primary" category={tag}>
               {tag}
             </OpalTag>
           ))}
-          {tags.length > 4 ? <OpalTag size="sm" variant="secondary">+{tags.length - 4}</OpalTag> : null}
+          {tags.length > 3 ? <OpalTag size="sm" variant="secondary">+{tags.length - 3}</OpalTag> : null}
         </div>
       ) : null}
 
       <div className={`opal-project-card-footer ${metaTopClass}`}>
         <div className="opal-project-card-author">
           <span className="opal-project-card-author-name">{author}</span>
-          <span>&middot;</span>
-          <span>{department} 담당</span>
+          {createdAt ? (
+            <>
+              <span>&middot;</span>
+              <span>{createdAt}</span>
+            </>
+          ) : null}
         </div>
 
-        <div className={`opal-project-card-stats rounded-2xl px-3 py-3 ${statsClass}`}>
+        <div className={`opal-project-card-stats rounded-xl px-3 py-2.5 ${statsClass}`}>
           {views !== undefined ? (
             <div className="flex items-center gap-1.5 text-slate-500">
               <Eye className="h-4 w-4" strokeWidth={1.5} />
@@ -101,12 +99,6 @@ export function OpalProjectCard({
             <div className="flex items-center gap-1.5 text-slate-700">
               <Star className="h-4 w-4" strokeWidth={1.5} fill="currentColor" />
               <span className="font-bold tabular-nums">{stars}</span>
-            </div>
-          ) : null}
-          {forks !== undefined ? (
-            <div className="flex items-center gap-1.5 text-slate-600">
-              <GitFork className="h-4 w-4" strokeWidth={1.5} />
-              <span className="font-medium tabular-nums">{forks}</span>
             </div>
           ) : null}
           {comments !== undefined ? (
@@ -120,4 +112,3 @@ export function OpalProjectCard({
     </div>
   )
 }
-

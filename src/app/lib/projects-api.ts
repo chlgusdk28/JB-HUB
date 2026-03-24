@@ -75,6 +75,8 @@ interface UploadProjectFilesOptions {
 
 const UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000
 const UPLOAD_REQUEST_RETRY_LIMIT = 1
+const PROJECT_FILE_UPLOAD_BATCH_COUNT = 40
+const PROJECT_FILE_UPLOAD_BATCH_BYTES = 128 * 1024 * 1024
 
 function normalizeArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : []
@@ -109,8 +111,28 @@ function localizeProjectApiError(message: string, status: number) {
     return '이 프로젝트를 관리하는 사용자만 파일을 올릴 수 있습니다.'
   }
 
+  if (normalized === 'only the project author can delete files.') {
+    return '이 프로젝트를 관리하는 사용자만 파일이나 폴더를 삭제할 수 있습니다.'
+  }
+
   if (normalized === 'only the project author can update the readme.') {
     return '프로젝트 작성자만 README를 수정할 수 있습니다.'
+  }
+
+  if (normalized === 'project file storage limit exceeded. each project can store up to 1gb.') {
+    return '하나의 프로젝트에는 파일을 최대 1GB까지만 올릴 수 있습니다.'
+  }
+
+  if (normalized === 'file path conflicts with an existing folder.') {
+    return '같은 경로에 이미 폴더가 있어 파일을 업로드할 수 없습니다.'
+  }
+
+  if (normalized === 'uploaded file is too large. the maximum size is 512mb per file.') {
+    return '파일 하나의 최대 업로드 크기는 512MB입니다.'
+  }
+
+  if (normalized === 'request entity too large' || normalized === 'payload too large') {
+    return '업로드 요청 크기가 너무 큽니다. 파일 수를 줄이거나 나눠서 다시 시도해 주세요.'
   }
 
   return message
@@ -157,7 +179,7 @@ function buildProjectUploadFormData(files: File[]) {
   return formData
 }
 
-function uploadProjectFilesWithRetry(
+function uploadProjectFileBatchWithRetry(
   projectId: number,
   files: File[],
   options: UploadProjectFilesOptions,
@@ -238,6 +260,51 @@ function uploadProjectFilesWithRetry(
 
     sendRequest(0)
   })
+}
+
+function calculateUploadWeight(files: File[]) {
+  return files.reduce((total, file) => total + Math.max(1, Number(file.size) || 0), 0)
+}
+
+function chunkProjectFiles(
+  files: File[],
+  options: {
+    maxFiles: number
+    maxBytes: number
+  },
+) {
+  if (files.length === 0) {
+    return []
+  }
+
+  if (files.length <= options.maxFiles && calculateUploadWeight(files) <= options.maxBytes) {
+    return [files]
+  }
+
+  const chunks: File[][] = []
+  let currentChunk: File[] = []
+  let currentChunkBytes = 0
+
+  for (const file of files) {
+    const fileSize = Math.max(1, Number(file.size) || 0)
+    const wouldExceedFileCount = currentChunk.length >= options.maxFiles
+    const wouldExceedBytes = currentChunk.length > 0 && currentChunkBytes + fileSize > options.maxBytes
+
+    if (wouldExceedFileCount || wouldExceedBytes) {
+      chunks.push(currentChunk)
+      currentChunk = []
+      currentChunkBytes = 0
+    }
+
+    currentChunk.push(file)
+    currentChunkBytes += fileSize
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk)
+  }
+
+  return chunks
 }
 
 export async function fetchProjects(): Promise<Project[]> {
@@ -336,70 +403,39 @@ export async function uploadProjectFiles(
   files: File[],
   options: UploadProjectFilesOptions,
 ): Promise<ProjectFileNode[]> {
-  return await uploadProjectFilesWithRetry(projectId, files, options)
-
-  const formData = new FormData()
-  const relativePaths = files.map((file) => {
-    const withRelativePath = file as File & { webkitRelativePath?: string }
-    return withRelativePath.webkitRelativePath?.trim() || file.name
+  const chunks = chunkProjectFiles(files, {
+    maxFiles: PROJECT_FILE_UPLOAD_BATCH_COUNT,
+    maxBytes: PROJECT_FILE_UPLOAD_BATCH_BYTES,
   })
+  const totalWeight = calculateUploadWeight(files)
+  let completedWeight = 0
+  let latestFiles: ProjectFileNode[] = []
 
-  for (const file of files) {
-    formData.append('files', file)
+  for (const chunk of chunks) {
+    const chunkWeight = calculateUploadWeight(chunk)
+    latestFiles = await uploadProjectFileBatchWithRetry(projectId, chunk, {
+      ...options,
+      onProgress: (chunkPercent) => {
+        if (!options.onProgress) {
+          return
+        }
+
+        const normalizedChunkPercent = Math.max(0, Math.min(100, chunkPercent))
+        const weightedProgress = completedWeight + chunkWeight * (normalizedChunkPercent / 100)
+        const overallPercent = Math.round((weightedProgress / Math.max(1, totalWeight)) * 100)
+        options.onProgress(Math.max(1, Math.min(99, overallPercent)))
+      },
+    })
+
+    completedWeight += chunkWeight
+    if (options.onProgress) {
+      const overallPercent = Math.round((completedWeight / Math.max(1, totalWeight)) * 100)
+      options.onProgress(Math.max(1, Math.min(99, overallPercent)))
+    }
   }
-  formData.append('relativePaths', JSON.stringify(relativePaths))
 
-  return await new Promise<ProjectFileNode[]>((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${API_BASE}/projects/${projectId}/files`)
-    xhr.responseType = 'text'
-    xhr.setRequestHeader('x-jb-user-name', options.currentUserName)
-
-    xhr.upload.onprogress = (event) => {
-      if (!options.onProgress) {
-        return
-      }
-
-      if (event.lengthComputable && event.total > 0) {
-        options.onProgress(Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100))))
-        return
-      }
-
-      options.onProgress(25)
-    }
-
-    xhr.onerror = () => {
-      reject(new Error('프로젝트 파일 업로드 중 네트워크 오류가 발생했습니다.'))
-    }
-
-    xhr.onabort = () => {
-      reject(new Error('프로젝트 파일 업로드가 중단되었습니다.'))
-    }
-
-    xhr.onload = () => {
-      const responseText = typeof xhr.responseText === 'string' ? xhr.responseText : ''
-
-      if (xhr.status < 200 || xhr.status >= 300) {
-        const message = extractJsonErrorFromText(
-          responseText,
-          `프로젝트 파일 업로드에 실패했습니다. (${xhr.status})`,
-          xhr.status,
-        )
-        reject(new Error(message))
-        return
-      }
-
-      try {
-        const payload = JSON.parse(responseText) as { files?: unknown }
-        options.onProgress?.(100)
-        resolve(normalizeArray<ProjectFileNode>(payload.files))
-      } catch {
-        reject(new Error('프로젝트 파일 업로드 응답이 올바르지 않습니다.'))
-      }
-    }
-
-    xhr.send(formData)
-  })
+  options.onProgress?.(100)
+  return latestFiles
 }
 
 export async function fetchProjectFileContent(projectId: number, relativePath: string): Promise<ProjectFileContent> {
@@ -449,6 +485,28 @@ export async function updateProjectReadme(
   }
 
   return readme as ProjectReadmeDocument
+}
+
+export async function deleteProjectFilePath(
+  projectId: number,
+  relativePath: string,
+  currentUserName: string,
+): Promise<ProjectFileNode[]> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/files?path=${encodeURIComponent(relativePath)}`, {
+    method: 'DELETE',
+    headers: {
+      'x-jb-user-name': currentUserName,
+      ...createProjectEditHeaders(projectId),
+    },
+  })
+
+  if (!response.ok) {
+    const message = await extractApiError(response, `파일 삭제에 실패했습니다. (${response.status})`)
+    throw new Error(message)
+  }
+
+  const payload = (await response.json()) as { files?: unknown }
+  return normalizeArray<ProjectFileNode>(payload.files)
 }
 
 export function buildProjectFileDownloadUrl(projectId: number, relativePath: string) {

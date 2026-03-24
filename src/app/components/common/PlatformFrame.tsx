@@ -14,7 +14,7 @@ interface PlatformFrameProps<TId extends string = string> {
   activeNavigationId: TId
   onSelectNavigation: (itemId: TId) => void
   headerEyebrow?: ReactNode
-  headerTitle: ReactNode
+  headerTitle?: ReactNode
   headerDescription?: ReactNode
   headerActions?: ReactNode
   headerMeta?: ReactNode
@@ -44,6 +44,7 @@ export function PlatformFrame<TId extends string = string>({
   className,
 }: PlatformFrameProps<TId>) {
   const BrandWrapper = onBrandClick ? 'button' : 'div'
+  const hasHeader = [headerEyebrow, headerTitle, headerDescription, headerActions, headerMeta].some(Boolean)
 
   return (
     <div className={cn('platform-shell', className)}>
@@ -99,15 +100,17 @@ export function PlatformFrame<TId extends string = string>({
       </aside>
 
       <main className="platform-main">
-        <PageHeader
-          eyebrow={headerEyebrow}
-          title={headerTitle}
-          description={headerDescription}
-          actions={headerActions}
-          meta={headerMeta}
-          className="platform-main-header"
-        />
-        <div className="platform-main-content">{children}</div>
+        {hasHeader ? (
+          <PageHeader
+            eyebrow={headerEyebrow}
+            title={headerTitle ?? ''}
+            description={headerDescription}
+            actions={headerActions}
+            meta={headerMeta}
+            className="platform-main-header"
+          />
+        ) : null}
+        <div className={cn('platform-main-content', !hasHeader && 'platform-main-content-no-header')}>{children}</div>
       </main>
     </div>
   )

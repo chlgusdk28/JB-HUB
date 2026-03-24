@@ -85,6 +85,7 @@ const ADMIN_LOCKOUT_DURATION = readEnvNumber('ADMIN_LOCKOUT_DURATION_MS', 900000
 const AUTH_STATE_CLEANUP_INTERVAL_MS = readEnvNumber('AUTH_STATE_CLEANUP_INTERVAL_MS', 300000) // 5 minutes
 const MAX_TEXT_PREVIEW_BYTES = 256 * 1024
 const MAX_PROJECT_README_CHAR_COUNT = 200000
+const MAX_PROJECT_FILE_STORAGE_BYTES = 1024 * 1024 * 1024
 const TEXT_FILE_EXTENSIONS = new Set([
   '.c',
   '.cc',
@@ -1398,6 +1399,96 @@ async function projectDirectoryHasFiles(projectDir) {
   }
 
   return false
+}
+
+async function getDirectorySizeBytes(directoryPath) {
+  let dirents
+  try {
+    dirents = await fs.promises.readdir(directoryPath, { withFileTypes: true })
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return 0
+    }
+    throw error
+  }
+
+  let totalBytes = 0
+
+  for (const dirent of dirents) {
+    const absolutePath = path.join(directoryPath, dirent.name)
+
+    if (dirent.isDirectory()) {
+      totalBytes += await getDirectorySizeBytes(absolutePath)
+      continue
+    }
+
+    if (dirent.isFile()) {
+      const stats = await fs.promises.stat(absolutePath)
+      totalBytes += stats.size
+    }
+  }
+
+  return totalBytes
+}
+
+async function getExistingProjectPathSizeBytes(absolutePath) {
+  try {
+    const stats = await fs.promises.stat(absolutePath)
+    if (stats.isDirectory()) {
+      throw new Error('validation:File path conflicts with an existing folder.')
+    }
+
+    return stats.isFile() ? stats.size : 0
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return 0
+    }
+
+    throw error
+  }
+}
+
+async function ensureProjectStorageLimit(projectId, plannedWrites) {
+  const projectDir = path.join(PROJECT_FILES_ROOT, String(projectId))
+  const currentTotalBytes = await getDirectorySizeBytes(projectDir)
+  const plannedPathSizes = new Map()
+  let totalDeltaBytes = 0
+
+  for (const plannedWrite of plannedWrites) {
+    const relativePath = plannedWrite?.target?.relativePath
+    if (!relativePath) {
+      continue
+    }
+
+    const previousSize = plannedPathSizes.has(relativePath)
+      ? plannedPathSizes.get(relativePath)
+      : await getExistingProjectPathSizeBytes(plannedWrite.target.absolutePath)
+
+    totalDeltaBytes += Number(plannedWrite.sizeBytes ?? 0) - Number(previousSize ?? 0)
+    plannedPathSizes.set(relativePath, Number(plannedWrite.sizeBytes ?? 0))
+  }
+
+  if (currentTotalBytes + totalDeltaBytes > MAX_PROJECT_FILE_STORAGE_BYTES) {
+    throw new Error('validation:Project file storage limit exceeded. Each project can store up to 1GB.')
+  }
+}
+
+async function removeEmptyProjectDirectories(projectDir, startDirectory) {
+  const resolvedProjectDir = path.resolve(projectDir)
+  let currentDirectory = path.resolve(startDirectory)
+
+  while (
+    currentDirectory.startsWith(resolvedProjectDir) &&
+    currentDirectory !== resolvedProjectDir
+  ) {
+    const entries = await fs.promises.readdir(currentDirectory)
+    if (entries.length > 0) {
+      break
+    }
+
+    await fs.promises.rmdir(currentDirectory)
+    currentDirectory = path.dirname(currentDirectory)
+  }
 }
 
 function buildDefaultProjectReadme(project) {
@@ -4158,6 +4249,12 @@ async function start() {
 
       const target = await resolveProjectReadmeTarget(projectId)
       const nextContent = sanitizeProjectReadmeContent(req.body?.content, buildDefaultProjectReadme(project))
+      await ensureProjectStorageLimit(projectId, [
+        {
+          target,
+          sizeBytes: Buffer.byteLength(nextContent, 'utf8'),
+        },
+      ])
 
       await fs.promises.mkdir(target.projectDir, { recursive: true })
       await fs.promises.writeFile(target.absolutePath, nextContent, 'utf8')
@@ -4217,6 +4314,7 @@ async function start() {
       const uploadedFiles = Array.isArray(req.files.files) ? req.files.files : [req.files.files]
       const relativePaths = normalizeUploadedRelativePaths(req.body?.relativePaths)
       const uploaded = []
+      const plannedWrites = []
 
       for (const [index, uploadedFile] of uploadedFiles.entries()) {
         const fallbackName = sanitizeProjectPathSegment(uploadedFile.name, `upload-${index + 1}`)
@@ -4224,6 +4322,17 @@ async function start() {
         if (isRestrictedProjectFilePath(target.relativePath)) {
           throw new Error('validation:Sensitive files and secrets cannot be uploaded to projects.')
         }
+
+        plannedWrites.push({
+          target,
+          sizeBytes: Number(uploadedFile.size ?? 0),
+        })
+      }
+
+      await ensureProjectStorageLimit(projectId, plannedWrites)
+
+      for (const [index, uploadedFile] of uploadedFiles.entries()) {
+        const target = plannedWrites[index].target
 
         await fs.promises.mkdir(path.dirname(target.absolutePath), { recursive: true })
         await uploadedFile.mv(target.absolutePath)
@@ -4241,6 +4350,52 @@ async function start() {
       res.status(201).json({ uploaded, files })
     } catch (error) {
       handleApiError(res, error, 'Failed to upload project files.')
+    }
+  })
+
+  v1Router.delete('/projects/:id/files', async (req, res) => {
+    const projectId = Number.parseInt(String(req.params.id), 10)
+    if (!Number.isFinite(projectId) || projectId <= 0) {
+      res.status(400).json({ error: 'Invalid project id.', requestId: req.requestId })
+      return
+    }
+
+    const requestedPath = typeof req.query.path === 'string' ? req.query.path : ''
+    if (!requestedPath.trim()) {
+      res.status(400).json({ error: 'File path is required.', requestId: req.requestId })
+      return
+    }
+
+    try {
+      const project = await getProjectById(pool, projectId)
+      if (!project) {
+        res.status(404).json({ error: 'Project not found.', requestId: req.requestId })
+        return
+      }
+
+      if (!hasProjectWriteAccess(req, project)) {
+        res.status(403).json({ error: 'Only the project author can delete files.', requestId: req.requestId })
+        return
+      }
+
+      const target = resolveProjectFileTarget(projectId, requestedPath)
+      if (isRestrictedProjectFilePath(target.relativePath)) {
+        res.status(403).json({ error: 'Access to this file is restricted.', requestId: req.requestId })
+        return
+      }
+
+      await fs.promises.stat(target.absolutePath)
+      await fs.promises.rm(target.absolutePath, { recursive: true, force: false })
+      await removeEmptyProjectDirectories(target.projectDir, path.dirname(target.absolutePath))
+
+      const files = await listProjectFiles(path.join(PROJECT_FILES_ROOT, String(projectId)))
+      res.json({ deletedPath: target.relativePath, files })
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        res.status(404).json({ error: 'File not found.', requestId: req.requestId })
+        return
+      }
+      handleApiError(res, error, 'Failed to delete project file.')
     }
   })
 

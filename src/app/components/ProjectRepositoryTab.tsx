@@ -4,6 +4,7 @@ import {
   buildProjectFileDownloadUrl,
   fetchProjectReadme,
   updateProjectReadme,
+  type ProjectFileNode,
   type ProjectReadmeDocument,
 } from '../lib/projects-api'
 import { FilesTab } from './FilesTab'
@@ -117,6 +118,14 @@ export function ProjectRepositoryTab({
   function handleCancelEdit() {
     setReadmeDraft(readme?.content ?? '')
     setIsEditingReadme(false)
+  }
+
+  function handleFilesChanged(_files: ProjectFileNode[]) {
+    if (isEditingReadme) {
+      return
+    }
+
+    void loadReadme()
   }
 
   return (
@@ -279,6 +288,7 @@ export function ProjectRepositoryTab({
         currentUserName={currentUserName}
         projectAuthor={projectAuthor}
         canUpload={canManage}
+        onFilesChanged={handleFilesChanged}
       />
     </div>
   )

@@ -1,6 +1,6 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useState, type ReactNode } from 'react'
 import { Clock3, Download, RotateCcw, Sparkles } from 'lucide-react'
-import { MetricCard, PageHeader, PageShell, Pill, ProjectSection } from '../common'
+import { PageHeader, PageShell, Pill, ProjectSection } from '../common'
 import { OpalButton } from '../opal'
 import type { Project } from '../../lib/project-utils'
 import { fetchPublicSiteContent, readSiteContentValue, type PublicSiteContent } from '../../lib/site-content-api'
@@ -14,6 +14,7 @@ export interface SummaryMetricItem {
 }
 
 interface HomePageViewProps {
+  shellDensity?: 'comfortable' | 'compact'
   activeCategoryLabel: string
   activeSortLabel: string
   visibleProjectsCount: number
@@ -25,10 +26,11 @@ interface HomePageViewProps {
   onExportFavorites: () => void
   onResetFilters: () => void
   onSurpriseMe: () => void
-  renderProjectCard: (project: Project, rank?: number, revealIndex?: number) => React.ReactNode
+  renderProjectCard: (project: Project, rank?: number, revealIndex?: number) => ReactNode
 }
 
 function HomePageViewBase({
+  shellDensity = 'comfortable',
   activeCategoryLabel,
   activeSortLabel,
   visibleProjectsCount,
@@ -83,36 +85,29 @@ function HomePageViewBase({
       projects: bestProjects,
       forceRender: true,
       gridClassName: 'grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3',
-      rightSlot: <Pill variant="subtle">스타 상위 3개</Pill>,
+      rightSlot: <Pill variant="subtle">추천 3개</Pill>,
       rankOffset: 1,
       revealOffset: 0,
     },
     {
       key: 'trending',
       title: '상승 중인 프로젝트',
-      projects: risingProjects.slice(0, 4),
-      rankOffset: undefined,
-      revealOffset: 2,
-    },
-    {
-      key: 'favorites',
-      title: '내 즐겨찾기',
-      projects: favoriteProjects.slice(0, 4),
+      projects: risingProjects.slice(0, 3),
       rankOffset: undefined,
       revealOffset: 2,
     },
     {
       key: 'recent',
       title: '최근 본 프로젝트',
-      projects: recentProjects.slice(0, 4),
-      icon: <Clock3 className="h-5 w-5 text-slate-600" />,
+      projects: recentProjects.slice(0, 3),
+      icon: <Clock3 className="h-4 w-4 text-slate-600" />,
       rankOffset: undefined,
       revealOffset: 2,
     },
   ]
 
   return (
-    <PageShell density="relaxed" topInset="none">
+    <PageShell density={shellDensity === 'compact' ? 'compact' : 'relaxed'}>
       <PageHeader
         eyebrow={eyebrow}
         title={
@@ -124,9 +119,6 @@ function HomePageViewBase({
         description={homeDescription}
         actions={
           <>
-            <OpalButton variant="secondary" size="sm" icon={<Download className="h-4 w-4" />} onClick={onExportFavorites}>
-              즐겨찾기 내보내기
-            </OpalButton>
             <OpalButton variant="secondary" size="sm" icon={<RotateCcw className="h-4 w-4" />} onClick={onResetFilters}>
               필터 초기화
             </OpalButton>
@@ -139,21 +131,38 @@ function HomePageViewBase({
           <>
             <Pill variant="subtle">카테고리: {activeCategoryLabel}</Pill>
             <Pill variant="subtle">정렬: {activeSortLabel}</Pill>
-            <Pill variant="subtle">결과: {visibleProjectsCount}</Pill>
+            <Pill variant="subtle">즐겨찾기 {favoriteProjects.length}</Pill>
           </>
         }
       />
 
-      <section className="home-metric-grid page-metric-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {summaryMetrics.map((metric) => (
-          <MetricCard
-            key={metric.key}
-            label={metric.label}
-            value={metric.value}
-            className={metric.className}
-            valueClassName={metric.valueClassName}
-          />
-        ))}
+      <section className="page-panel">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2.5">
+            {summaryMetrics.map((metric) => (
+              <div
+                key={metric.key}
+                className={`rounded-full border border-slate-200/80 bg-white/85 px-3 py-2 text-sm text-slate-700 ${metric.className ?? ''}`}
+              >
+                <span className="text-xs font-medium text-slate-500">{metric.label}</span>
+                <span className={`ml-2 font-semibold text-slate-900 ${metric.valueClassName ?? ''}`}>{metric.value}</span>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={onExportFavorites}
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200/80 bg-white/82 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
+          >
+            <Download className="h-4 w-4" />
+            즐겨찾기 내보내기
+          </button>
+        </div>
+
+        <p className="mt-3 text-sm text-slate-500">
+          현재 {visibleProjectsCount}개의 프로젝트가 보이고 있습니다. 자주 쓰는 항목은 컬렉션에서 다시 확인할 수 있어요.
+        </p>
       </section>
 
       {homeProjectSections.map((section) => (

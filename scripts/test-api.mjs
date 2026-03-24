@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process'
 import { setTimeout as delay } from 'node:timers/promises'
 
 const TEST_PORT = Number.parseInt(process.env.API_TEST_PORT ?? '8899', 10)
+const TEST_DB_HOST = process.env.DB_HOST ?? '127.0.0.1'
+const TEST_DB_PORT = process.env.DB_PORT ?? '3310'
 const API_ROOT = `http://127.0.0.1:${TEST_PORT}/api`
 const SERVER_START_TIMEOUT_MS = 45_000
 
@@ -12,7 +14,10 @@ function spawnApiServer() {
     env: {
       ...process.env,
       API_PORT: String(TEST_PORT),
+      DB_HOST: TEST_DB_HOST,
+      DB_PORT: TEST_DB_PORT,
       DB_NAME: process.env.DB_NAME ?? `jbhub_test_${TEST_PORT}`,
+      DB_PASSWORD: process.env.DB_PASSWORD ?? 'test-db-password-1234567890',
       CORS_ALLOWED_ORIGINS: process.env.CORS_ALLOWED_ORIGINS ?? 'http://127.0.0.1:5173',
       API_JWT_HS256_SECRET: process.env.API_JWT_HS256_SECRET ?? 'test-api-jwt-secret-change-me-1234567890',
       ADMIN_DEFAULT_USERNAME: process.env.ADMIN_DEFAULT_USERNAME ?? 'jbhub-admin',
@@ -60,6 +65,14 @@ async function requestJson(path, init) {
     payload = { raw: text }
   }
   return { response, payload }
+}
+
+function buildStartupHint(logs) {
+  if (logs.includes('ECONNREFUSED')) {
+    return `MySQL server does not appear to be reachable at ${TEST_DB_HOST}:${TEST_DB_PORT}. Start the database or override DB_HOST/DB_PORT before running the API tests.`
+  }
+
+  return null
 }
 
 async function requestAdminJson(port, path, init) {
@@ -198,10 +211,15 @@ async function run() {
     console.log('API integration tests passed.')
     console.log(`Validated endpoints on ${API_ROOT}`)
   } catch (error) {
+    const logs = getLogs()
     console.error('API integration tests failed.')
     console.error(error)
+    const startupHint = buildStartupHint(logs)
+    if (startupHint) {
+      console.error(startupHint)
+    }
     console.error('--- API logs ---')
-    console.error(getLogs())
+    console.error(logs)
     process.exitCode = 1
   } finally {
     if (!exited) {

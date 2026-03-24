@@ -1,55 +1,28 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Bell, Palette, Save, Settings, Shield } from 'lucide-react'
 import { MetricCard, PageHeader, PageShell, Pill } from '../common'
+import {
+  applyUserSettings,
+  loadUserSettings,
+  saveUserSettings,
+  type Density,
+  type Language,
+  type Theme,
+  type UserSettingsState,
+} from '../../lib/user-settings'
+import type { HubSession } from '../../lib/hub-auth'
 
-export type Theme = 'light' | 'dark' | 'auto'
-export type Language = 'ko' | 'en'
-export type Density = 'comfortable' | 'compact'
-
-interface UserSettingsState {
-  theme: Theme
-  language: Language
-  density: Density
-  notifications: {
-    email: boolean
-    push: boolean
-    projectUpdates: boolean
-    newComments: boolean
-    trending: boolean
-  }
-  privacy: {
-    profilePublic: boolean
-    showActivity: boolean
-    showBookmarks: boolean
-  }
-}
+export type { Density, Language, Theme, UserSettingsState } from '../../lib/user-settings'
 
 interface UserSettingsProps {
+  value?: UserSettingsState
+  onChange?: (settings: UserSettingsState) => void
   onSave?: (settings: UserSettingsState) => void
   onClose?: () => void
+  currentUser?: Pick<HubSession, 'name' | 'username' | 'department' | 'role'>
 }
 
 type SettingsTab = 'appearance' | 'notifications' | 'privacy' | 'account'
-
-const STORAGE_KEY = 'jb-hub:user-settings'
-
-const DEFAULT_SETTINGS: UserSettingsState = {
-  theme: 'light',
-  language: 'ko',
-  density: 'comfortable',
-  notifications: {
-    email: true,
-    push: true,
-    projectUpdates: true,
-    newComments: true,
-    trending: false,
-  },
-  privacy: {
-    profilePublic: false,
-    showActivity: true,
-    showBookmarks: true,
-  },
-}
 
 const TAB_OPTIONS: Array<{ id: SettingsTab; label: string; icon: typeof Palette }> = [
   { id: 'appearance', label: '화면', icon: Palette },
@@ -74,44 +47,8 @@ const DENSITY_LABELS: Record<Density, string> = {
   compact: '컴팩트',
 }
 
-function mergeSettings(candidate: Partial<UserSettingsState> | null | undefined): UserSettingsState {
-  const next = candidate ?? {}
-
-  return {
-    ...DEFAULT_SETTINGS,
-    ...next,
-    notifications: {
-      ...DEFAULT_SETTINGS.notifications,
-      ...next.notifications,
-    },
-    privacy: {
-      ...DEFAULT_SETTINGS.privacy,
-      ...next.privacy,
-    },
-  }
-}
-
 function getTabLabel(tab: SettingsTab) {
   return TAB_OPTIONS.find((option) => option.id === tab)?.label ?? tab
-}
-
-function applyTheme(theme: Theme) {
-  if (typeof document === 'undefined' || typeof window === 'undefined') {
-    return
-  }
-
-  if (theme === 'dark') {
-    document.documentElement.classList.add('dark')
-    return
-  }
-
-  if (theme === 'light') {
-    document.documentElement.classList.remove('dark')
-    return
-  }
-
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  document.documentElement.classList.toggle('dark', prefersDark)
 }
 
 function OptionCard({
@@ -162,9 +99,7 @@ function ToggleRow({
       <button
         type="button"
         onClick={onToggle}
-        className={`relative h-6 w-12 rounded-full transition-colors ${
-          checked ? 'bg-[#315779]' : 'bg-slate-300'
-        }`}
+        className={`relative h-6 w-12 rounded-full transition-colors ${checked ? 'bg-[#315779]' : 'bg-slate-300'}`}
         aria-pressed={checked}
       >
         <span
@@ -177,46 +112,54 @@ function ToggleRow({
   )
 }
 
-export function loadUserSettings(): UserSettingsState {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    return mergeSettings(stored ? (JSON.parse(stored) as Partial<UserSettingsState>) : undefined)
-  } catch {
-    return DEFAULT_SETTINGS
-  }
-}
-
-export function saveUserSettings(settings: UserSettingsState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-    applyTheme(settings.theme)
-  } catch (error) {
-    console.error('Failed to save settings:', error)
-  }
-}
-
-export function UserSettings({ onSave, onClose }: UserSettingsProps) {
-  const [settings, setSettings] = useState<UserSettingsState>(() => loadUserSettings())
+export function UserSettings({
+  value,
+  onChange,
+  onSave,
+  onClose,
+  currentUser,
+}: UserSettingsProps) {
+  const [settings, setSettings] = useState<UserSettingsState>(() => value ?? loadUserSettings())
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance')
   const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (value) {
+      setSettings(value)
+    }
+  }, [value])
+
+  useEffect(() => {
+    applyUserSettings(settings)
+  }, [settings])
 
   const enabledNotificationCount = useMemo(
     () => Object.values(settings.notifications).filter(Boolean).length,
     [settings.notifications],
   )
 
+  const shellDensity = settings.density === 'compact' ? 'compact' : 'default'
+
+  function updateSettings(updater: (previous: UserSettingsState) => UserSettingsState) {
+    setSettings((previous) => {
+      const next = updater(previous)
+      onChange?.(next)
+      return next
+    })
+  }
+
   const updateTopLevel = <K extends keyof Pick<UserSettingsState, 'theme' | 'language' | 'density'>>(
     key: K,
     value: UserSettingsState[K],
   ) => {
-    setSettings((previous) => ({
+    updateSettings((previous) => ({
       ...previous,
       [key]: value,
     }))
   }
 
   const updateNotification = (key: keyof UserSettingsState['notifications'], value: boolean) => {
-    setSettings((previous) => ({
+    updateSettings((previous) => ({
       ...previous,
       notifications: {
         ...previous.notifications,
@@ -226,7 +169,7 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
   }
 
   const updatePrivacy = (key: keyof UserSettingsState['privacy'], value: boolean) => {
-    setSettings((previous) => ({
+    updateSettings((previous) => ({
       ...previous,
       privacy: {
         ...previous.privacy,
@@ -237,8 +180,8 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
 
   const handleSave = () => {
     saveUserSettings(settings)
-    setSaved(true)
     onSave?.(settings)
+    setSaved(true)
     window.setTimeout(() => setSaved(false), 2000)
   }
 
@@ -250,7 +193,7 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
   ]
 
   return (
-    <PageShell density="compact">
+    <PageShell density={shellDensity}>
       <PageHeader
         eyebrow={
           <>
@@ -259,7 +202,7 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
           </>
         }
         title="개인 설정"
-        description="화면, 알림, 개인정보 공개 범위를 같은 패턴 안에서 관리할 수 있도록 정리한 설정 페이지입니다."
+        description="화면, 알림, 개인정보 공개 범위를 한곳에서 관리하고 저장 즉시 앱 화면에도 반영되도록 연결했습니다."
         actions={
           <>
             {onClose ? (
@@ -309,9 +252,7 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
               )
             })}
           </div>
-          <span className="page-toolbar-note">
-            모든 설정은 같은 레이아웃 규칙 안에서 정리해 두어 페이지를 넘겨도 사용감이 흔들리지 않도록 맞췄습니다.
-          </span>
+          <span className="page-toolbar-note">설정값은 화면 미리보기에 바로 반영되고, 저장하면 다음 방문에도 유지됩니다.</span>
         </div>
       </section>
 
@@ -320,7 +261,7 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
           <div className="page-panel-lg space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">테마</h2>
-              <p className="mt-1 text-sm text-slate-500">앱 전체 분위기와 대비를 선택합니다.</p>
+              <p className="mt-1 text-sm text-slate-500">허브 전체 분위기와 대비를 선택합니다.</p>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {(['light', 'dark', 'auto'] as Theme[]).map((theme) => (
@@ -330,9 +271,9 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
                   title={THEME_LABELS[theme]}
                   description={
                     theme === 'light'
-                      ? '밝고 깔끔한 기본 화면'
+                      ? '밝고 선명한 기본 화면'
                       : theme === 'dark'
-                        ? '대비가 높은 어두운 화면'
+                        ? '눈부심을 줄인 어두운 화면'
                         : '기기 설정에 맞춰 자동 전환'
                   }
                   onClick={() => updateTopLevel('theme', theme)}
@@ -355,7 +296,7 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
           <div className="page-panel-lg space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">언어</h2>
-              <p className="mt-1 text-sm text-slate-500">기본 표시 언어를 선택합니다.</p>
+              <p className="mt-1 text-sm text-slate-500">문서 언어와 기본 인터페이스 방향을 설정합니다.</p>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {(['ko', 'en'] as Language[]).map((language) => (
@@ -363,7 +304,7 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
                   key={language}
                   active={settings.language === language}
                   title={LANGUAGE_LABELS[language]}
-                  description={language === 'ko' ? '한국어 인터페이스' : 'English interface'}
+                  description={language === 'ko' ? '한국어 우선 환경' : 'English-first environment'}
                   onClick={() => updateTopLevel('language', language)}
                 />
               ))}
@@ -373,7 +314,7 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
           <div className="page-panel-lg space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">정보 밀도</h2>
-              <p className="mt-1 text-sm text-slate-500">카드 간격과 정보 배치를 조절합니다.</p>
+              <p className="mt-1 text-sm text-slate-500">프로젝트 카드 간격과 주요 화면의 여백을 조절합니다.</p>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {(['comfortable', 'compact'] as Density[]).map((density) => (
@@ -381,7 +322,7 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
                   key={density}
                   active={settings.density === density}
                   title={DENSITY_LABELS[density]}
-                  description={density === 'comfortable' ? '여유 있게 보기' : '더 많은 정보를 한 번에 보기'}
+                  description={density === 'comfortable' ? '여유 있는 카드 간격과 넓은 호흡' : '더 많은 정보를 한 화면에 표시'}
                   onClick={() => updateTopLevel('density', density)}
                 />
               ))}
@@ -394,31 +335,31 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
         <section className="page-list-stack">
           <ToggleRow
             title="이메일 알림"
-            description="중요 업데이트를 이메일로 받아봅니다."
+            description="중요한 업데이트를 이메일로 받습니다."
             checked={settings.notifications.email}
             onToggle={() => updateNotification('email', !settings.notifications.email)}
           />
           <ToggleRow
-            title="푸시 알림"
-            description="브라우저 알림으로 실시간 상태를 확인합니다."
+            title="브라우저 알림"
+            description="실시간 상태 변화를 브라우저 알림으로 확인합니다."
             checked={settings.notifications.push}
             onToggle={() => updateNotification('push', !settings.notifications.push)}
           />
           <ToggleRow
             title="프로젝트 업데이트"
-            description="관심 프로젝트의 변경 사항을 알려줍니다."
+            description="관심 프로젝트의 수정 사항을 알려줍니다."
             checked={settings.notifications.projectUpdates}
             onToggle={() => updateNotification('projectUpdates', !settings.notifications.projectUpdates)}
           />
           <ToggleRow
             title="댓글 알림"
-            description="내가 본 프로젝트와 토론에 새 댓글이 달리면 알려줍니다."
+            description="내가 본 프로젝트나 토론에 새 댓글이 달리면 알려줍니다."
             checked={settings.notifications.newComments}
             onToggle={() => updateNotification('newComments', !settings.notifications.newComments)}
           />
           <ToggleRow
             title="추천 프로젝트"
-            description="요즘 주목받는 프로젝트를 추천합니다."
+            description="주목받는 프로젝트를 추천 카드와 알림에 반영합니다."
             checked={settings.notifications.trending}
             onToggle={() => updateNotification('trending', !settings.notifications.trending)}
           />
@@ -429,26 +370,24 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
         <section className="page-list-stack">
           <ToggleRow
             title="프로필 공개"
-            description="다른 사용자가 내 프로필과 요약 정보를 볼 수 있습니다."
+            description="프로필 화면에서 공개 상태가 표시되고 공유 가능한 사용자로 보입니다."
             checked={settings.privacy.profilePublic}
             onToggle={() => updatePrivacy('profilePublic', !settings.privacy.profilePublic)}
           />
           <ToggleRow
-            title="활동 내역 표시"
-            description="최근 본 프로젝트와 활동 흔적을 프로필에 노출합니다."
+            title="활동 이력 표시"
+            description="프로필의 최근 본 프로젝트와 활동 요약 영역을 표시합니다."
             checked={settings.privacy.showActivity}
             onToggle={() => updatePrivacy('showActivity', !settings.privacy.showActivity)}
           />
           <ToggleRow
             title="즐겨찾기 표시"
-            description="저장한 프로젝트 목록을 프로필에 함께 보여줍니다."
+            description="프로필에서 즐겨찾기 프로젝트 섹션을 공개합니다."
             checked={settings.privacy.showBookmarks}
             onToggle={() => updatePrivacy('showBookmarks', !settings.privacy.showBookmarks)}
           />
           <div className="page-panel border-sky-200 bg-sky-50/80">
-            <p className="text-sm text-sky-800">
-              개인정보 관련 설정은 저장 즉시 프로필과 목록 공개 범위에 반영됩니다.
-            </p>
+            <p className="text-sm text-sky-800">프라이버시 설정은 저장 후 프로필 화면에 바로 반영됩니다.</p>
           </div>
         </section>
       ) : null}
@@ -458,49 +397,50 @@ export function UserSettings({ onSave, onClose }: UserSettingsProps) {
           <div className="page-panel-lg space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">계정 정보</h2>
-              <p className="mt-1 text-sm text-slate-500">현재 계정 상태와 기본 프로필 정보를 요약해서 보여줍니다.</p>
+              <p className="mt-1 text-sm text-slate-500">현재 로그인한 사용자의 기본 정보를 확인합니다.</p>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">이름</p>
-                <p className="mt-2 text-base font-semibold text-slate-900">J. Kim</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">{currentUser?.name ?? '알 수 없음'}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">이메일</p>
-                <p className="mt-2 text-base font-semibold text-slate-900">jkim@jb-hub.local</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">아이디</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">{currentUser?.username ?? '-'}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">소속</p>
-                <p className="mt-2 text-base font-semibold text-slate-900">IT 디지털</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">부서</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">{currentUser?.department ?? '-'}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">권한</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">
+                  {currentUser?.role === 'admin' ? '관리자' : '구성원'}
+                </p>
               </div>
             </div>
 
             <div className="rounded-[24px] border border-slate-200 bg-white/80 p-5">
-              <p className="text-sm font-semibold text-slate-900">계정 보안</p>
-              <p className="mt-1 text-sm text-slate-500">
-                비밀번호 변경, 2단계 인증, 장치 세션 관리는 다음 단계에서 연결할 수 있도록 블록 구조를 맞춰 두었습니다.
-              </p>
+              <p className="text-sm font-semibold text-slate-900">적용 상태</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Pill variant="subtle">테마 {THEME_LABELS[settings.theme]}</Pill>
+                <Pill variant="subtle">언어 {LANGUAGE_LABELS[settings.language]}</Pill>
+                <Pill variant="subtle">밀도 {DENSITY_LABELS[settings.density]}</Pill>
+                <Pill variant="subtle">{settings.privacy.profilePublic ? '프로필 공개' : '프로필 비공개'}</Pill>
+              </div>
             </div>
           </div>
 
           <div className="page-panel-lg space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">위험 작업</h2>
-              <p className="mt-1 text-sm text-slate-500">영구적인 변경이 발생할 수 있는 항목입니다.</p>
+              <h2 className="text-lg font-semibold text-slate-900">안내</h2>
+              <p className="mt-1 text-sm text-slate-500">개인설정은 현재 허브 UI 기준으로 적용 가능한 항목부터 연결되어 있습니다.</p>
             </div>
-            <button
-              type="button"
-              className="w-full rounded-2xl border border-rose-200 px-4 py-3 text-left text-rose-600 transition hover:bg-rose-50"
-            >
-              계정 데이터 내보내기
-            </button>
-            <button
-              type="button"
-              className="w-full rounded-2xl border border-rose-200 px-4 py-3 text-left text-rose-600 transition hover:bg-rose-50"
-            >
-              계정 비활성화
-            </button>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm leading-6 text-slate-600">
+              화면 설정은 즉시 미리보기되고, 저장 시 다시 방문해도 유지됩니다. 프라이버시 옵션은 프로필 화면의 공개 상태와 섹션 노출에
+              반영됩니다.
+            </div>
           </div>
         </section>
       ) : null}

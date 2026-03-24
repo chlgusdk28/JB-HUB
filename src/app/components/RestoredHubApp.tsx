@@ -7,6 +7,7 @@ import {
   Home,
   Image,
   LayoutGrid,
+  LogOut,
   Map as MapIcon,
   MessageSquare,
   Plus,
@@ -18,7 +19,7 @@ import {
 } from 'lucide-react'
 import { HomePageView, type SummaryMetricItem } from './app/HomePageView'
 import { ExplorePageView, type ActiveFilterChip } from './app/ExplorePageView'
-import { Pill, PlatformFrame, ProjectPreviewCard, type NavigationSection } from './common'
+import { PlatformFrame, ProjectPreviewCard, type NavigationSection } from './common'
 import { QuietProjectDetail } from './QuietProjectDetail'
 import { RankingPage } from './RankingPage'
 import { CommunityDiscussion } from './CommunityDiscussion'
@@ -36,6 +37,8 @@ import { UserSettings } from './user/UserSettings'
 import { ToolsPage } from './ToolsPage'
 import { useToast } from './ToastProvider'
 import { copyTextToClipboard } from '../lib/clipboard'
+import type { HubSession } from '../lib/hub-auth'
+import { applyUserSettings, loadUserSettings, saveUserSettings, type UserSettingsState } from '../lib/user-settings'
 import { createProject, fetchProjects } from '../lib/projects-api'
 import { initialDiscussions, type DiscussionCategory, type DiscussionPost } from '../data/discussions'
 
@@ -79,6 +82,22 @@ interface HubProject {
 const CURRENT_USER = {
   name: 'J. Kim',
   department: 'IT 디지털',
+}
+
+type CurrentUserProfile = HubSession
+
+interface RestoredHubAppProps {
+  currentUser?: CurrentUserProfile
+  onLogout?: () => void
+  onOpenAdminConsole?: () => void
+}
+
+const DEFAULT_CURRENT_USER: HubSession = {
+  id: 'default-hub-user',
+  username: 'jkim',
+  ...CURRENT_USER,
+  role: 'member',
+  loginAt: new Date(0).toISOString(),
 }
 
 const FAVORITES_STORAGE_KEY = 'hub:favorites'
@@ -308,7 +327,11 @@ function writeStoredNumberList(storageKey: string, values: number[]) {
   }
 }
 
-export default function RestoredHubApp() {
+export default function RestoredHubApp({
+  currentUser = DEFAULT_CURRENT_USER,
+  onLogout,
+  onOpenAdminConsole,
+}: RestoredHubAppProps) {
   const toast = useToast()
   const initialUrlState = useMemo(() => readHubUrlState(), [])
   const [page, setPage] = useState<PageId>(() => resolvePageFromUrlState(initialUrlState))
@@ -327,7 +350,8 @@ export default function RestoredHubApp() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(initialUrlState?.projectId ?? null)
   const [discussions, setDiscussions] = useState<DiscussionPost[]>(initialDiscussions)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const projectCardDensity: ProjectCardDensity = 'compact'
+  const [userSettings, setUserSettings] = useState<UserSettingsState>(() => loadUserSettings())
+  const projectCardDensity: ProjectCardDensity = userSettings.density === 'compact' ? 'compact' : 'comfortable'
   const hasSyncedHistoryRef = useRef(false)
   const isHandlingPopStateRef = useRef(false)
   const lastHistorySnapshotRef = useRef({
@@ -340,6 +364,10 @@ export default function RestoredHubApp() {
     setFavoriteProjectIds(readStoredNumberList(FAVORITES_STORAGE_KEY))
     setRecentProjectIds(readStoredNumberList(RECENT_STORAGE_KEY))
   }, [])
+
+  useEffect(() => {
+    applyUserSettings(userSettings)
+  }, [userSettings])
 
   useEffect(() => {
     writeStoredNumberList(FAVORITES_STORAGE_KEY, favoriteProjectIds)
@@ -644,8 +672,8 @@ export default function RestoredHubApp() {
         projectId: selectedProjectId ?? undefined,
         title: input.title,
         summary: input.summary,
-        author: CURRENT_USER.name,
-        department: CURRENT_USER.department,
+        author: currentUser.name,
+        department: currentUser.department,
         category: input.category,
         tags: input.tags,
         likes: 0,
@@ -753,6 +781,7 @@ export default function RestoredHubApp() {
 
     return (
       <HomePageView
+        shellDensity={userSettings.density}
         activeCategoryLabel={CATEGORY_DEFINITIONS.find((item) => item.id === selectedCategory)?.label ?? '전체'}
         activeSortLabel={SORT_LABELS[sortBy]}
         visibleProjectsCount={filteredProjects.length}
@@ -819,6 +848,7 @@ export default function RestoredHubApp() {
           <div className="rounded-[1.8rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{loadError}</div>
         ) : null}
         <ExplorePageView
+          shellDensity={userSettings.density}
           activeFilterCount={activeFilterChips.length}
           activeFilterChips={activeFilterChips}
           showFavoritesOnly={showFavoritesOnly}
@@ -862,8 +892,8 @@ export default function RestoredHubApp() {
           project={selectedProject as never}
           relatedProjects={relatedProjects as never}
           isFavorite={favoriteProjectIds.includes(selectedProject.id)}
-          currentUserName={CURRENT_USER.name}
-          canManageFiles={selectedProject.author === CURRENT_USER.name}
+          currentUserName={currentUser.name}
+          canManageFiles={selectedProject.author === currentUser.name}
           onToggleFavorite={toggleFavorite}
           onOpenProject={openProject}
           onShare={() => void handleShareProject(selectedProject)}
@@ -877,7 +907,7 @@ export default function RestoredHubApp() {
           projects={projects as never}
           favoriteIds={favoriteProjectIds}
           recentProjectIds={recentProjectIds}
-          currentUser={CURRENT_USER}
+          currentUser={currentUser}
           onProjectClick={openProject}
         />
       )
@@ -891,7 +921,6 @@ export default function RestoredHubApp() {
           recentProjectIds={recentProjectIds}
           onProjectClick={openProject}
           onNavigateToPage={(nextPage) => navigateToPage(nextPage as PageId)}
-          showHeader={false}
         />
       )
     }
@@ -949,14 +978,27 @@ export default function RestoredHubApp() {
           projects={projects as never}
           favoriteIds={favoriteProjectIds}
           recentProjectIds={recentProjectIds}
-          currentUser={CURRENT_USER}
+          currentUser={currentUser}
+          privacy={userSettings.privacy}
+          cardDensity={projectCardDensity}
           onProjectClick={openProject}
         />
       )
     }
 
     if (page === 'settings') {
-      return <UserSettings />
+      return (
+        <UserSettings
+          value={userSettings}
+          onChange={setUserSettings}
+          onSave={(settings) => {
+            saveUserSettings(settings)
+            setUserSettings(settings)
+            toast.success('개인설정을 반영했습니다.')
+          }}
+          currentUser={currentUser}
+        />
+      )
     }
 
     if (page === 'projects') {
@@ -1017,19 +1059,19 @@ export default function RestoredHubApp() {
   const activeNavigationId: PageId = isProjectDetailPage ? 'projects' : page
   const activeNavigationLabel =
     navigationSections.flatMap((section) => section.items).find((item) => item.id === activeNavigationId)?.label ?? '홈'
-  const headerTitle = isProjectDetailPage ? '프로젝트 상세' : activeNavigationLabel
-  const headerDescription = pageDescriptions[page]
+  const currentContextTitle = isProjectDetailPage ? '프로젝트 상세' : activeNavigationLabel
+  const currentContextCopy = selectedProject ? `${selectedProject.title}를 중심으로 작업하고 있어요.` : pageDescriptions[page]
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.12),transparent_24%),linear-gradient(180deg,#f8fbff_0%,#eff4fb_42%,#f4f7fb_100%)] text-slate-900">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#f1f5f9_100%)] text-slate-900">
       {isCreateOpen ? (
         <NewProjectEditor
           onClose={() => setIsCreateOpen(false)}
           onSubmit={(projectData) => handleCreateProject(projectData as unknown as Record<string, unknown>)}
           departmentOptions={departments}
           categoryOptions={['협업', 'AI', '검색', '문서', '자동화', '보안']}
-          initialAuthor={CURRENT_USER.name}
-          initialDepartment={CURRENT_USER.department}
+          initialAuthor={currentUser.name}
+          initialDepartment={currentUser.department}
         />
       ) : null}
 
@@ -1037,86 +1079,65 @@ export default function RestoredHubApp() {
         brandMark={<img src="/Logo.png" alt="" className="platform-brand-image" />}
         brandEyebrow="프로젝트 허브"
         brandTitle="JB Hub"
-        brandDescription="사내 프로젝트, 파일, Docker 배포 흐름을 같은 맥락에서 탐색하는 운영형 허브입니다."
+        brandDescription="사내 프로젝트와 작업 자료를 한곳에서 찾는 허브입니다."
         onBrandClick={() => navigateToPage('home')}
         navigationSections={navigationSections}
         activeNavigationId={activeNavigationId}
         onSelectNavigation={navigateToPage}
-        headerEyebrow="워크스페이스"
-        headerTitle={headerTitle}
-        headerDescription={headerDescription}
-        headerActions={
-          <div className="admin-toolbar">
-            <button
-              type="button"
-              onClick={() => void loadProjects()}
-              className="glass-inline-button"
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              새로고침
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsCreateOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] transition hover:bg-slate-800"
-            >
-              <Plus className="h-4 w-4" />
-              프로젝트 생성
-            </button>
-          </div>
-        }
-        headerMeta={
-          <>
-            <Pill variant="subtle">{CURRENT_USER.name}</Pill>
-            <Pill variant="subtle">{CURRENT_USER.department}</Pill>
-            <Pill variant="subtle">프로젝트 {projects.length}</Pill>
-            <Pill variant="subtle">즐겨찾기 {favoriteProjectIds.length}</Pill>
-            <Pill variant="subtle">최근 {recentProjectIds.length}</Pill>
-            {selectedProject && !isProjectDetailPage ? <Pill variant="subtle">선택 프로젝트 {selectedProject.author}</Pill> : null}
-          </>
-        }
         sidebarLead={
-          <div className="space-y-3">
-            <div className="platform-context-card">
-              <p className="platform-context-eyebrow">현재 위치</p>
-              <p className="platform-context-title">{activeNavigationLabel}</p>
-              <p className="platform-context-copy">
-                {CURRENT_USER.name} · {CURRENT_USER.department}
-              </p>
+          <div className="platform-context-card">
+            <p className="platform-context-eyebrow">현재 보기</p>
+            <p className="platform-context-title">{currentContextTitle}</p>
+            <p className="platform-context-copy">{currentContextCopy}</p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1">{currentUser.name}</span>
+              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1">
+                {currentUser.department}
+              </span>
+              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1">
+                {currentUser.role === 'admin' ? '관리자' : '멤버'}
+              </span>
+              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1">
+                {userSettings.language === 'en' ? 'English' : '한국어'}
+              </span>
             </div>
-            {selectedProject && !isProjectDetailPage ? (
-              <div className="platform-context-card">
-                <p className="platform-context-eyebrow">선택 프로젝트</p>
-                <p className="platform-context-title">{selectedProject.title}</p>
-                <p className="platform-context-copy">
-                  {selectedProject.author} · {selectedProject.department}
-                </p>
-              </div>
-            ) : null}
           </div>
         }
         sidebarFooter={
           <div className="space-y-3">
-            <div className="platform-mini-stat-grid">
-              <div className="platform-mini-stat">
-                <p className="platform-mini-stat-label">프로젝트</p>
-                <p className="platform-mini-stat-value">{projects.length}</p>
-              </div>
-              <div className="platform-mini-stat">
-                <p className="platform-mini-stat-label">즐겨찾기</p>
-                <p className="platform-mini-stat-value">{favoriteProjectIds.length}</p>
-              </div>
-              <div className="platform-mini-stat">
-                <p className="platform-mini-stat-label">최근 본 항목</p>
-                <p className="platform-mini-stat-value">{recentProjectIds.length}</p>
+            <div className="platform-sidebar-actions">
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(true)}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.12)] transition hover:bg-slate-800"
+              >
+                <Plus className="h-4 w-4" />
+                프로젝트 생성
+              </button>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <button type="button" onClick={() => void loadProjects()} className="glass-inline-button w-full justify-center">
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  새로고침
+                </button>
+                {currentUser.role === 'admin' && onOpenAdminConsole ? (
+                  <button type="button" onClick={onOpenAdminConsole} className="glass-inline-button w-full justify-center">
+                    <Settings className="h-4 w-4" />
+                    관리자 콘솔
+                  </button>
+                ) : null}
+                {onLogout ? (
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="glass-inline-button w-full justify-center sm:col-span-2 lg:col-span-1 xl:col-span-2"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    로그아웃
+                  </button>
+                ) : null}
               </div>
             </div>
-            <div className="platform-context-card">
-              <p className="platform-context-eyebrow">운영 팁</p>
-              <p className="platform-context-copy">
-                프로젝트 상세에서 파일 업로드와 Docker 배포를 계속 사용할 수 있고, 세부 운영 관제는 관리자 페이지에서 이어집니다.
-              </p>
-            </div>
+            <p className="text-xs leading-5 text-slate-500">세부 필터와 화면별 제어는 각 페이지 상단에서 바로 조절할 수 있어요.</p>
           </div>
         }
       >

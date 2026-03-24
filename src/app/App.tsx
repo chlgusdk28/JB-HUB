@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Settings } from 'lucide-react'
+import { AuthLoginPage } from './components/AuthLoginPage'
 import RestoredHubApp from './components/RestoredHubApp'
 import AdminConsolePage from './components/admin/AdminConsolePage'
+import {
+  authenticateHubUser,
+  listHubDemoAccounts,
+  persistHubSession,
+  restoreHubSession,
+  type HubSession,
+} from './lib/hub-auth'
+import { applyUserSettings, loadUserSettings } from './lib/user-settings'
 
 function normalizePathname(pathname: string) {
   if (!pathname || pathname === '/') {
@@ -15,6 +23,7 @@ export default function App() {
   const [pathname, setPathname] = useState(() =>
     typeof window === 'undefined' ? '/' : normalizePathname(window.location.pathname),
   )
+  const [session, setSession] = useState<HubSession | null>(() => restoreHubSession())
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -25,6 +34,14 @@ export default function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  useEffect(() => {
+    applyUserSettings(loadUserSettings())
+  }, [])
+
+  useEffect(() => {
+    persistHubSession(session)
+  }, [session])
 
   function navigate(nextPath: string) {
     if (typeof window === 'undefined') {
@@ -41,21 +58,42 @@ export default function App() {
     window.scrollTo(0, 0)
   }
 
+  function handleLogin(username: string, password: string) {
+    const result = authenticateHubUser(username, password)
+    if (result.success && result.session) {
+      setSession(result.session)
+    }
+
+    return {
+      success: result.success,
+      error: result.error,
+    }
+  }
+
+  function handleLogout() {
+    setSession(null)
+    navigate('/')
+  }
+
   if (pathname === '/admin') {
     return <AdminConsolePage onNavigateHome={() => navigate('/')} />
   }
 
+  if (!session) {
+    return (
+      <AuthLoginPage
+        onSubmitLogin={handleLogin}
+        demoAccounts={listHubDemoAccounts()}
+        onOpenAdminPage={() => navigate('/admin')}
+      />
+    )
+  }
+
   return (
-    <>
-      <RestoredHubApp />
-      <button
-        type="button"
-        onClick={() => navigate('/admin')}
-        className="fixed bottom-5 right-5 z-[60] inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-900 shadow-[0_16px_40px_rgba(15,23,42,0.18)] backdrop-blur transition hover:-translate-y-0.5 hover:border-slate-400"
-      >
-        <Settings className="h-4 w-4" />
-        관리자 페이지
-      </button>
-    </>
+    <RestoredHubApp
+      currentUser={session}
+      onLogout={handleLogout}
+      onOpenAdminConsole={session.role === 'admin' ? () => navigate('/admin') : undefined}
+    />
   )
 }
