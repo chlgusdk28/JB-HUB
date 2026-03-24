@@ -1954,6 +1954,22 @@
     @apply flex flex-wrap gap-2;
   }
 
+  .page-summary-strip {
+    @apply flex flex-wrap gap-2.5;
+  }
+
+  .page-summary-item {
+    @apply rounded-full border border-slate-200/80 bg-white/86 px-3 py-2 text-sm text-slate-700;
+  }
+
+  .page-summary-label {
+    @apply text-xs font-medium text-slate-500;
+  }
+
+  .page-summary-value {
+    @apply ml-2 font-semibold text-slate-900;
+  }
+
   .page-toolbar-note {
     @apply text-xs text-slate-500;
   }
