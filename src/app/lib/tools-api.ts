@@ -1,4 +1,6 @@
-const API_BASE = '/api/v1/tools'
+import { getApiBase } from './api-base'
+
+const API_BASE = getApiBase('/api/v1/tools')
 
 export interface OcrToolResponse {
   text: string

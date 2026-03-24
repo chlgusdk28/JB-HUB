@@ -1,5 +1,7 @@
-const API_V1_BASE = '/api/v1'
-const API_ADMIN_BASE = '/api/admin'
+import { getApiBase } from './api-base'
+
+const API_V1_BASE = getApiBase('/api/v1')
+const API_ADMIN_BASE = getApiBase('/api/admin')
 
 export type SignupApplicationStatus = 'pending' | 'approved' | 'rejected'
 

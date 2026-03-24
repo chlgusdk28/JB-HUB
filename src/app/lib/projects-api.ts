@@ -1,7 +1,8 @@
 import type { Project } from './project-utils'
+import { getApiBase } from './api-base'
 import { createProjectEditHeaders, persistProjectEditToken } from './project-edit-token-storage'
 
-const API_BASE = '/api/v1'
+const API_BASE = getApiBase('/api/v1')
 
 interface RankingProject {
   id: number
@@ -57,6 +58,16 @@ export interface ProjectFileContent {
   content: string | null
 }
 
+export interface ProjectReadmeDocument {
+  name: string
+  path: string
+  content: string
+  size: number
+  updatedAt: string | null
+  exists: boolean
+  isGenerated: boolean
+}
+
 interface UploadProjectFilesOptions {
   currentUserName: string
   onProgress?: (percent: number) => void
@@ -96,6 +107,10 @@ function localizeProjectApiError(message: string, status: number) {
   }
   if (normalized === 'only the project author can upload files.') {
     return '이 프로젝트를 관리하는 사용자만 파일을 올릴 수 있습니다.'
+  }
+
+  if (normalized === 'only the project author can update the readme.') {
+    return '프로젝트 작성자만 README를 수정할 수 있습니다.'
   }
 
   return message
@@ -299,6 +314,23 @@ export async function fetchProjectFiles(projectId: number): Promise<ProjectFileN
   return normalizeArray<ProjectFileNode>(payload.files)
 }
 
+export async function fetchProjectReadme(projectId: number): Promise<ProjectReadmeDocument> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/readme`)
+  if (!response.ok) {
+    const message = await extractApiError(response, `README를 불러오지 못했습니다. (${response.status})`)
+    throw new Error(message)
+  }
+
+  const payload = (await response.json()) as { readme?: unknown }
+  const readme = payload.readme
+
+  if (!readme || typeof readme !== 'object') {
+    throw new Error('README 응답 형식이 올바르지 않습니다.')
+  }
+
+  return readme as ProjectReadmeDocument
+}
+
 export async function uploadProjectFiles(
   projectId: number,
   files: File[],
@@ -387,6 +419,36 @@ export async function fetchProjectFileContent(projectId: number, relativePath: s
   }
 
   return file as ProjectFileContent
+}
+
+export async function updateProjectReadme(
+  projectId: number,
+  content: string,
+  currentUserName: string,
+): Promise<ProjectReadmeDocument> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/readme`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-jb-user-name': currentUserName,
+      ...createProjectEditHeaders(projectId),
+    },
+    body: JSON.stringify({ content }),
+  })
+
+  if (!response.ok) {
+    const message = await extractApiError(response, `README를 저장하지 못했습니다. (${response.status})`)
+    throw new Error(message)
+  }
+
+  const payload = (await response.json()) as { readme?: unknown }
+  const readme = payload.readme
+
+  if (!readme || typeof readme !== 'object') {
+    throw new Error('README 저장 응답 형식이 올바르지 않습니다.')
+  }
+
+  return readme as ProjectReadmeDocument
 }
 
 export function buildProjectFileDownloadUrl(projectId: number, relativePath: string) {

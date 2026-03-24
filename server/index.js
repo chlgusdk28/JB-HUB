@@ -84,6 +84,7 @@ const ADMIN_MAX_LOGIN_ATTEMPTS = readEnvNumber('ADMIN_MAX_LOGIN_ATTEMPTS', 5)
 const ADMIN_LOCKOUT_DURATION = readEnvNumber('ADMIN_LOCKOUT_DURATION_MS', 900000) // 15 minutes
 const AUTH_STATE_CLEANUP_INTERVAL_MS = readEnvNumber('AUTH_STATE_CLEANUP_INTERVAL_MS', 300000) // 5 minutes
 const MAX_TEXT_PREVIEW_BYTES = 256 * 1024
+const MAX_PROJECT_README_CHAR_COUNT = 200000
 const TEXT_FILE_EXTENSIONS = new Set([
   '.c',
   '.cc',
@@ -1249,6 +1250,52 @@ function isKnownTextFile(filePath) {
   return TEXT_FILE_NAMES.has(baseName) || TEXT_FILE_EXTENSIONS.has(extension)
 }
 
+function isProjectReadmeFileName(fileName) {
+  return /^readme(?:\.[^.]+)?$/i.test(String(fileName ?? '').trim())
+}
+
+function rankProjectReadmeFileName(fileName) {
+  const normalized = String(fileName ?? '').trim().toLowerCase()
+  if (normalized === 'readme.md') {
+    return 0
+  }
+  if (normalized === 'readme') {
+    return 1
+  }
+  return 2
+}
+
+async function resolveProjectReadmeTarget(projectId) {
+  const defaultTarget = resolveProjectFileTarget(projectId, 'README.md', 'README.md')
+
+  try {
+    const dirents = await fs.promises.readdir(defaultTarget.projectDir, { withFileTypes: true })
+    const readmeEntry = dirents
+      .filter((dirent) => dirent.isFile() && isProjectReadmeFileName(dirent.name))
+      .sort((left, right) => {
+        const rankDifference = rankProjectReadmeFileName(left.name) - rankProjectReadmeFileName(right.name)
+        if (rankDifference !== 0) {
+          return rankDifference
+        }
+
+        return left.name.localeCompare(right.name, 'en', { numeric: true, sensitivity: 'base' })
+      })
+      .at(0)
+
+    if (!readmeEntry) {
+      return defaultTarget
+    }
+
+    return resolveProjectFileTarget(projectId, readmeEntry.name, readmeEntry.name)
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return defaultTarget
+    }
+
+    throw error
+  }
+}
+
 async function listProjectFiles(projectDir, currentDir = projectDir) {
   let dirents
   try {
@@ -1372,6 +1419,58 @@ ${description}
 ## Tags
 ${tagSection}
 `
+}
+
+function sanitizeProjectReadmeContent(input, fallbackContent) {
+  const rawValue = typeof input === 'string' ? input : ''
+  const normalized = rawValue
+    .replace(/\r\n/g, '\n')
+    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
+    .slice(0, MAX_PROJECT_README_CHAR_COUNT)
+    .trim()
+
+  if (!normalized) {
+    return fallbackContent
+  }
+
+  return normalized
+}
+
+async function readProjectReadmeDocument(project) {
+  const target = await resolveProjectReadmeTarget(project?.id)
+
+  try {
+    const stats = await fs.promises.stat(target.absolutePath)
+    if (!stats.isFile()) {
+      throw new Error('validation:README is only available for files.')
+    }
+
+    const content = await fs.promises.readFile(target.absolutePath, 'utf8')
+    return {
+      name: path.basename(target.absolutePath),
+      path: target.relativePath,
+      content,
+      size: stats.size,
+      updatedAt: stats.mtime.toISOString(),
+      exists: true,
+      isGenerated: false,
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      throw error
+    }
+
+    const content = buildDefaultProjectReadme(project)
+    return {
+      name: 'README.md',
+      path: 'README.md',
+      content,
+      size: Buffer.byteLength(content, 'utf8'),
+      updatedAt: null,
+      exists: false,
+      isGenerated: true,
+    }
+  }
 }
 
 async function ensureProjectHasDefaultFiles(project) {
@@ -4014,6 +4113,59 @@ async function start() {
       })
     } catch (error) {
       handleApiError(res, error, 'Failed to create project.')
+    }
+  })
+
+  v1Router.get('/projects/:id/readme', async (req, res) => {
+    const projectId = Number.parseInt(String(req.params.id), 10)
+    if (!Number.isFinite(projectId) || projectId <= 0) {
+      res.status(400).json({ error: 'Invalid project id.', requestId: req.requestId })
+      return
+    }
+
+    try {
+      const project = await getProjectById(pool, projectId)
+      if (!project) {
+        res.status(404).json({ error: 'Project not found.', requestId: req.requestId })
+        return
+      }
+
+      const readme = await readProjectReadmeDocument(project)
+      res.json({ readme })
+    } catch (error) {
+      handleApiError(res, error, 'Failed to fetch project README.')
+    }
+  })
+
+  v1Router.put('/projects/:id/readme', async (req, res) => {
+    const projectId = Number.parseInt(String(req.params.id), 10)
+    if (!Number.isFinite(projectId) || projectId <= 0) {
+      res.status(400).json({ error: 'Invalid project id.', requestId: req.requestId })
+      return
+    }
+
+    try {
+      const project = await getProjectById(pool, projectId)
+      if (!project) {
+        res.status(404).json({ error: 'Project not found.', requestId: req.requestId })
+        return
+      }
+
+      if (!hasProjectWriteAccess(req, project)) {
+        res.status(403).json({ error: 'Only the project author can update the README.', requestId: req.requestId })
+        return
+      }
+
+      const target = await resolveProjectReadmeTarget(projectId)
+      const nextContent = sanitizeProjectReadmeContent(req.body?.content, buildDefaultProjectReadme(project))
+
+      await fs.promises.mkdir(target.projectDir, { recursive: true })
+      await fs.promises.writeFile(target.absolutePath, nextContent, 'utf8')
+
+      const readme = await readProjectReadmeDocument(project)
+      res.json({ readme })
+    } catch (error) {
+      handleApiError(res, error, 'Failed to save project README.')
     }
   })
 

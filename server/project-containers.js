@@ -26,8 +26,13 @@ const CONTAINER_ROOT_DIR = 'containers'
 const DOCKER_PREVIEW_HOST = String(process.env.DOCKER_PREVIEW_HOST || '127.0.0.1').trim() || '127.0.0.1'
 const COMPOSE_FILE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']
 const CONTAINER_META_FILE_NAMES = ['jbhub.container.json', 'jbhub.container.yml', 'jbhub.container.yaml']
+const CONTAINER_UPLOAD_RECORD_FILE_NAME = '.jbhub.upload.json'
 const COMPOSE_PREVIEW_HTTP_PORTS = [80, 443, 3000, 4173, 4200, 5173, 8000, 8080, 8888]
 const CONTAINER_META_FILE_NAME_SET = new Set(CONTAINER_META_FILE_NAMES.map((fileName) => fileName.toLowerCase()))
+const CONTAINER_INTERNAL_FILE_NAME_SET = new Set([
+  ...CONTAINER_META_FILE_NAME_SET,
+  CONTAINER_UPLOAD_RECORD_FILE_NAME.toLowerCase(),
+])
 const CONTAINER_ALLOWED_HIDDEN_FILES = new Set(['.dockerignore', '.env.example', '.gitignore'])
 const CONTAINER_RESTRICTED_PATH_SEGMENTS = new Set(['.aws', '.git', '.hg', '.kube', '.ssh', '.svn'])
 const CONTAINER_RESTRICTED_FILE_PATTERNS = [
@@ -227,6 +232,32 @@ function findComposeFileName(definitionDir) {
   return null
 }
 
+function findEnvironmentFileName(definitionDir) {
+  if (pathExists(path.join(definitionDir, '.env'))) {
+    return '.env'
+  }
+
+  const candidates = listRootFileNames(
+    definitionDir,
+    (fileName) => /^\.env(?:\..+)?$/i.test(fileName) && fileName.toLowerCase() !== '.env.example',
+  ).sort((left, right) => left.localeCompare(right, 'en', { numeric: true }))
+
+  return candidates[0] ?? null
+}
+
+function findNginxConfigFileName(definitionDir) {
+  if (pathExists(path.join(definitionDir, 'nginx.conf'))) {
+    return 'nginx.conf'
+  }
+
+  const candidates = listRootFileNames(
+    definitionDir,
+    (fileName) => /^nginx\.conf(?:\..+)?$/i.test(fileName),
+  ).sort((left, right) => left.localeCompare(right, 'en', { numeric: true }))
+
+  return candidates[0] ?? null
+}
+
 function listRootFileNames(definitionDir, predicate) {
   let entries = []
   try {
@@ -245,6 +276,8 @@ async function writeContainerDefinitionEntryFiles({
   definitionDir,
   uploadedDockerfile = null,
   uploadedComposeFile = null,
+  uploadedEnvFile = null,
+  uploadedNginxConfigFile = null,
 }) {
   await ensureDirectory(definitionDir)
 
@@ -265,6 +298,22 @@ async function writeContainerDefinitionEntryFiles({
     if (detectedComposeFileName) {
       filesToRemove.add(path.join(definitionDir, detectedComposeFileName))
     }
+  }
+
+  if (uploadedEnvFile) {
+    const detectedEnvironmentFileName = findEnvironmentFileName(definitionDir)
+    if (detectedEnvironmentFileName) {
+      filesToRemove.add(path.join(definitionDir, detectedEnvironmentFileName))
+    }
+    filesToRemove.add(path.join(definitionDir, '.env'))
+  }
+
+  if (uploadedNginxConfigFile) {
+    const detectedNginxConfigFileName = findNginxConfigFileName(definitionDir)
+    if (detectedNginxConfigFileName) {
+      filesToRemove.add(path.join(definitionDir, detectedNginxConfigFileName))
+    }
+    filesToRemove.add(path.join(definitionDir, 'nginx.conf'))
   }
 
   for (const targetPath of filesToRemove) {
@@ -292,10 +341,220 @@ async function writeContainerDefinitionEntryFiles({
     await uploadedComposeFile.mv(composeFilePath)
   }
 
+  let envFilePath = null
+  if (uploadedEnvFile) {
+    envFilePath = path.join(definitionDir, '.env')
+    await uploadedEnvFile.mv(envFilePath)
+  }
+
+  let nginxConfigFilePath = null
+  if (uploadedNginxConfigFile) {
+    nginxConfigFilePath = path.join(definitionDir, 'nginx.conf')
+    await uploadedNginxConfigFile.mv(nginxConfigFilePath)
+  }
+
   return {
     dockerfilePath,
     composeFilePath,
+    envFilePath,
+    nginxConfigFilePath,
   }
+}
+
+function buildUploadedEnvSource(definitionDir, envFilePath, uploadedEnvFile) {
+  if (!uploadedEnvFile || !envFilePath) {
+    return null
+  }
+
+  return {
+    kind: 'env',
+    fileName: uploadedEnvFile.name,
+    relativePath: path.relative(definitionDir, envFilePath).split(path.sep).join('/'),
+  }
+}
+
+function buildUploadedNginxConfigSource(definitionDir, nginxConfigFilePath, uploadedNginxConfigFile) {
+  if (!uploadedNginxConfigFile || !nginxConfigFilePath) {
+    return null
+  }
+
+  return {
+    kind: 'nginx-config',
+    fileName: uploadedNginxConfigFile.name,
+    relativePath: path.relative(definitionDir, nginxConfigFilePath).split(path.sep).join('/'),
+  }
+}
+
+function normalizeUploadRecordSource(source, defaultKind = 'artifact') {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    return null
+  }
+
+  const fileName =
+    typeof source.fileName === 'string' && source.fileName.trim()
+      ? source.fileName.trim()
+      : typeof source.originalName === 'string' && source.originalName.trim()
+        ? source.originalName.trim()
+        : null
+
+  if (!fileName) {
+    return null
+  }
+
+  return {
+    kind: typeof source.kind === 'string' && source.kind.trim() ? source.kind.trim() : defaultKind,
+    fileName,
+    relativePath:
+      typeof source.relativePath === 'string' && source.relativePath.trim() ? source.relativePath.trim() : null,
+    source: typeof source.source === 'string' && source.source.trim() ? source.source.trim() : 'upload',
+  }
+}
+
+async function writeContainerUploadRecord(definitionDir, { mode = null, sources = [] } = {}) {
+  await ensureDirectory(definitionDir)
+
+  const normalizedSources = sources
+    .map((source) => normalizeUploadRecordSource(source))
+    .filter(Boolean)
+
+  const payload = {
+    version: 1,
+    recordedAt: new Date().toISOString(),
+    mode: typeof mode === 'string' && mode.trim() ? mode.trim() : null,
+    sources: normalizedSources,
+  }
+
+  await fs.promises.writeFile(
+    path.join(definitionDir, CONTAINER_UPLOAD_RECORD_FILE_NAME),
+    JSON.stringify(payload, null, 2),
+    'utf8',
+  )
+
+  return payload
+}
+
+async function readContainerUploadRecord(definitionDir) {
+  const absolutePath = path.join(definitionDir, CONTAINER_UPLOAD_RECORD_FILE_NAME)
+  if (!pathExists(absolutePath)) {
+    return {
+      fileName: null,
+      absolutePath: null,
+      exists: false,
+      recordedAt: null,
+      mode: null,
+      sources: [],
+    }
+  }
+
+  const text = await readTextFileIfExists(absolutePath)
+  if (!text) {
+    return {
+      fileName: CONTAINER_UPLOAD_RECORD_FILE_NAME,
+      absolutePath,
+      exists: true,
+      recordedAt: null,
+      mode: null,
+      sources: [],
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(text)
+    const normalizedSources = Array.isArray(parsed?.sources)
+      ? parsed.sources.map((source) => normalizeUploadRecordSource(source)).filter(Boolean)
+      : []
+
+    return {
+      fileName: CONTAINER_UPLOAD_RECORD_FILE_NAME,
+      absolutePath,
+      exists: true,
+      recordedAt: typeof parsed?.recordedAt === 'string' && parsed.recordedAt.trim() ? parsed.recordedAt.trim() : null,
+      mode: typeof parsed?.mode === 'string' && parsed.mode.trim() ? parsed.mode.trim() : null,
+      sources: normalizedSources,
+    }
+  } catch {
+    return {
+      fileName: CONTAINER_UPLOAD_RECORD_FILE_NAME,
+      absolutePath,
+      exists: true,
+      recordedAt: null,
+      mode: null,
+      sources: [],
+    }
+  }
+}
+
+function buildFallbackUploadSources({ dockerfilePath, composeFileName, envFileName, nginxConfigFileName, files }) {
+  const sourceMap = new Map()
+
+  function pushSource(source) {
+    const normalizedSource = normalizeUploadRecordSource(source, 'artifact')
+    if (!normalizedSource) {
+      return
+    }
+
+    const key = `${normalizedSource.kind}:${normalizedSource.relativePath ?? normalizedSource.fileName}`
+    if (!sourceMap.has(key)) {
+      sourceMap.set(key, normalizedSource)
+    }
+  }
+
+  if (typeof dockerfilePath === 'string' && dockerfilePath.trim()) {
+    pushSource({
+      kind: 'dockerfile',
+      fileName: path.basename(dockerfilePath),
+      relativePath: dockerfilePath,
+      source: 'definition',
+    })
+  }
+
+  if (typeof composeFileName === 'string' && composeFileName.trim()) {
+    pushSource({
+      kind: 'compose',
+      fileName: path.basename(composeFileName),
+      relativePath: composeFileName,
+      source: 'definition',
+    })
+  }
+
+  if (typeof envFileName === 'string' && envFileName.trim()) {
+    pushSource({
+      kind: 'env',
+      fileName: path.basename(envFileName),
+      relativePath: envFileName,
+      source: 'definition',
+    })
+  }
+
+  if (typeof nginxConfigFileName === 'string' && nginxConfigFileName.trim()) {
+    pushSource({
+      kind: 'nginx-config',
+      fileName: path.basename(nginxConfigFileName),
+      relativePath: nginxConfigFileName,
+      source: 'definition',
+    })
+  }
+
+  for (const relativePath of Array.isArray(files) ? files : []) {
+    const normalizedRelativePath = typeof relativePath === 'string' && relativePath.trim() ? relativePath.trim() : ''
+    if (!normalizedRelativePath) {
+      continue
+    }
+
+    const fileName = path.posix.basename(normalizedRelativePath)
+    if (!/\.(?:tar|tgz|tar\.gz|zip)$/i.test(fileName)) {
+      continue
+    }
+
+    pushSource({
+      kind: 'archive',
+      fileName,
+      relativePath: normalizedRelativePath,
+      source: 'definition',
+    })
+  }
+
+  return Array.from(sourceMap.values())
 }
 
 function collectOfflineImageBundleEntries(bundleDir) {
@@ -564,6 +823,10 @@ async function listContainerDefinitionFiles(definitionDir) {
       const relativePath = path.relative(definitionDir, absolutePath).split(path.sep).join('/')
       if (entry.isDirectory()) {
         await visit(absolutePath)
+        continue
+      }
+
+      if (CONTAINER_INTERNAL_FILE_NAME_SET.has(relativePath.toLowerCase())) {
         continue
       }
 
@@ -884,9 +1147,12 @@ async function scanProjectContainerDefinitions(projectId, db) {
     const definitionName = sanitizePathSegment(entry.name, 'container')
     const definitionDir = path.join(containersDir, definitionName)
     const metadata = await readContainerMetadata(definitionDir)
+    const uploadRecord = await readContainerUploadRecord(definitionDir)
     const metadataBuild = metadata.data?.build ?? {}
     const metadataRun = metadata.data?.run ?? {}
     const composeFileName = findComposeFileName(definitionDir)
+    const envFileName = findEnvironmentFileName(definitionDir)
+    const nginxConfigFileName = findNginxConfigFileName(definitionDir)
     const detectedDockerfileName = findDockerfileName(definitionDir)
     const dockerfilePath = normalizeProjectRelativePath(
       metadataBuild.dockerfile ?? detectedDockerfileName ?? 'Dockerfile',
@@ -914,7 +1180,21 @@ async function scanProjectContainerDefinitions(projectId, db) {
     }
 
     const files = await listContainerDefinitionFiles(definitionDir)
-    if (!composeFileName && files.length <= 2 && dockerfileNeedsLocalContext(dockerfileContents)) {
+    const uploadSources =
+      uploadRecord.sources.length > 0
+        ? uploadRecord.sources
+        : buildFallbackUploadSources({
+            dockerfilePath,
+            composeFileName,
+            envFileName,
+            nginxConfigFileName,
+            files,
+          })
+    const contextHeuristicFileCount = files.filter((relativePath) => {
+      const fileName = path.posix.basename(relativePath).toLowerCase()
+      return fileName !== '.dockerignore' && !/^\.env(?:\..+)?$/i.test(fileName)
+    }).length
+    if (!composeFileName && contextHeuristicFileCount <= 2 && dockerfileNeedsLocalContext(dockerfileContents)) {
       warnings.push('This Dockerfile uses COPY or ADD. Upload the matching context files before building.')
     }
 
@@ -934,6 +1214,9 @@ async function scanProjectContainerDefinitions(projectId, db) {
         Number.isFinite(Number(metadataRun.readinessTimeoutSec)) && Number(metadataRun.readinessTimeoutSec) > 0
           ? Number(metadataRun.readinessTimeoutSec)
           : null,
+      uploadMode: uploadRecord.mode,
+      uploadRecordedAt: uploadRecord.recordedAt,
+      uploadSources,
       files,
       warnings,
       lastBuildJob: jobsByDefinition.get(definitionName) ?? null,
@@ -1090,6 +1373,155 @@ function parseComposePsOutput(text) {
   }
 
   return []
+}
+
+function parseJsonFromProcessOutput(text) {
+  const normalized = String(text ?? '').trim()
+  if (!normalized) {
+    throw new Error('No JSON output was returned.')
+  }
+
+  try {
+    return JSON.parse(normalized)
+  } catch {
+    // Fall through and try to recover a JSON document from mixed stdout/stderr output.
+  }
+
+  const candidates = []
+  const objectStart = normalized.indexOf('{')
+  const objectEnd = normalized.lastIndexOf('}')
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    candidates.push(normalized.slice(objectStart, objectEnd + 1))
+  }
+
+  const arrayStart = normalized.indexOf('[')
+  const arrayEnd = normalized.lastIndexOf(']')
+  if (arrayStart >= 0 && arrayEnd > arrayStart) {
+    candidates.push(normalized.slice(arrayStart, arrayEnd + 1))
+  }
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate)
+    } catch {
+      // Continue trying additional candidates.
+    }
+  }
+
+  throw new Error('JSON output could not be parsed.')
+}
+
+function normalizeComposeBuildConfig(buildConfig) {
+  if (!buildConfig) {
+    return null
+  }
+
+  if (typeof buildConfig === 'string') {
+    return {
+      context: buildConfig,
+      dockerfile: 'Dockerfile',
+    }
+  }
+
+  if (typeof buildConfig === 'object' && !Array.isArray(buildConfig)) {
+    return {
+      ...buildConfig,
+      context:
+        typeof buildConfig.context === 'string' && buildConfig.context.trim() ? buildConfig.context.trim() : '.',
+      dockerfile:
+        typeof buildConfig.dockerfile === 'string' && buildConfig.dockerfile.trim()
+          ? buildConfig.dockerfile.trim()
+          : 'Dockerfile',
+    }
+  }
+
+  return null
+}
+
+function resolveComposeBuildContextPath(buildConfig, composeFileAbsolutePath) {
+  const normalizedBuildConfig = normalizeComposeBuildConfig(buildConfig)
+  if (!normalizedBuildConfig) {
+    return null
+  }
+
+  return path.isAbsolute(normalizedBuildConfig.context)
+    ? normalizedBuildConfig.context
+    : path.resolve(path.dirname(composeFileAbsolutePath), normalizedBuildConfig.context)
+}
+
+function resolveComposeBuildDockerfilePath(buildConfig, composeFileAbsolutePath) {
+  const normalizedBuildConfig = normalizeComposeBuildConfig(buildConfig)
+  if (!normalizedBuildConfig) {
+    return null
+  }
+
+  const contextPath = resolveComposeBuildContextPath(normalizedBuildConfig, composeFileAbsolutePath)
+  if (!contextPath) {
+    return null
+  }
+
+  return path.isAbsolute(normalizedBuildConfig.dockerfile)
+    ? normalizedBuildConfig.dockerfile
+    : path.resolve(contextPath, normalizedBuildConfig.dockerfile)
+}
+
+function stripUnavailableComposeBuilds(services, { composeFileAbsolutePath, logPath } = {}) {
+  if (!services || typeof services !== 'object' || Array.isArray(services)) {
+    return services
+  }
+
+  const sanitizedServices = {}
+
+  for (const [serviceName, serviceConfig] of Object.entries(services)) {
+    if (!serviceConfig || typeof serviceConfig !== 'object' || Array.isArray(serviceConfig)) {
+      sanitizedServices[serviceName] = serviceConfig
+      continue
+    }
+
+    const normalizedService = { ...serviceConfig }
+    const hasImage = typeof normalizedService.image === 'string' && normalizedService.image.trim()
+    const dockerfilePath = resolveComposeBuildDockerfilePath(normalizedService.build, composeFileAbsolutePath)
+    const contextPath = resolveComposeBuildContextPath(normalizedService.build, composeFileAbsolutePath)
+    const buildUnavailable =
+      normalizedService.build && hasImage && (!contextPath || !pathExists(contextPath) || !dockerfilePath || !pathExists(dockerfilePath))
+
+    if (buildUnavailable) {
+      const reason = !contextPath || !pathExists(contextPath) ? 'build context is missing' : 'Dockerfile is missing'
+      appendToLogFile(
+        logPath,
+        `JB Hub preview notice: service ${serviceName} will use image ${normalizedService.image} because ${reason}.\n`,
+      )
+      delete normalizedService.build
+    }
+
+    if (Array.isArray(normalizedService.volumes)) {
+      normalizedService.volumes = normalizedService.volumes.filter((volumeEntry) => {
+        if (!volumeEntry || typeof volumeEntry !== 'object' || Array.isArray(volumeEntry)) {
+          return true
+        }
+
+        const isBindMount = String(volumeEntry.type ?? '').trim().toLowerCase() === 'bind'
+        const sourcePath = typeof volumeEntry.source === 'string' && volumeEntry.source.trim() ? volumeEntry.source.trim() : null
+        if (!isBindMount || !sourcePath || pathExists(sourcePath)) {
+          return true
+        }
+
+        appendToLogFile(
+          logPath,
+          `JB Hub preview notice: service ${serviceName} will skip bind mount ${sourcePath} because the source path is missing.\n`,
+        )
+        return false
+      })
+
+      if (normalizedService.volumes.length === 0) {
+        delete normalizedService.volumes
+      }
+    }
+
+    sanitizedServices[serviceName] = normalizedService
+  }
+
+  return sanitizedServices
 }
 
 function parseComposeTargetPort(value) {
@@ -1294,7 +1726,7 @@ async function generatePreviewComposeFile({
 
   let parsedConfig
   try {
-    parsedConfig = JSON.parse(configResult.output)
+    parsedConfig = parseJsonFromProcessOutput(configResult.output)
   } catch {
     throw new Error('Compose file normalization returned invalid JSON.')
   }
@@ -1312,7 +1744,12 @@ async function generatePreviewComposeFile({
     throw new Error('Compose file normalization could not find any services.')
   }
 
-  const previewTarget = selectComposePreviewService(services, {
+  const sanitizedServices = stripUnavailableComposeBuilds(services, {
+    composeFileAbsolutePath,
+    logPath,
+  })
+
+  const previewTarget = selectComposePreviewService(sanitizedServices, {
     previewContainerPort,
     previewServiceName,
   })
@@ -1320,7 +1757,7 @@ async function generatePreviewComposeFile({
   let hasPublishedPreviewPort = false
   const previewServices = {}
 
-  for (const [serviceName, serviceConfig] of Object.entries(services)) {
+  for (const [serviceName, serviceConfig] of Object.entries(sanitizedServices)) {
     if (!serviceConfig || typeof serviceConfig !== 'object' || Array.isArray(serviceConfig)) {
       previewServices[serviceName] = serviceConfig
       continue
@@ -1649,6 +2086,31 @@ async function stopDockerDeployment(db, deploymentRow, { remove = true } = {}) {
   return serializeDeployment(db.prepare('SELECT * FROM docker_deployments WHERE id = ?').get(deploymentRow.id))
 }
 
+async function cleanupComposeProjectArtifacts({ composeProjectName, composeFileAbsolutePath, logPath }) {
+  try {
+    const cleanupResult = await runContainerComposeProcess(
+      ['-p', composeProjectName, '-f', composeFileAbsolutePath, 'down', '--remove-orphans', '-v'],
+      {
+        cwd: path.dirname(composeFileAbsolutePath),
+        logPath,
+        timeoutMs: 60000,
+      },
+    )
+
+    if (cleanupResult.exitCode !== 0) {
+      appendToLogFile(
+        logPath,
+        `JB Hub preview cleanup warning: ${cleanupResult.output.trim() || 'compose down did not complete cleanly.'}\n`,
+      )
+    }
+  } catch (error) {
+    appendToLogFile(
+      logPath,
+      `JB Hub preview cleanup warning: ${error instanceof Error ? error.message : 'compose down failed.'}\n`,
+    )
+  }
+}
+
 async function stopActiveDefinitionDeployments(db, projectId, definitionName) {
   const activeDeployments = db
     .prepare(
@@ -1953,6 +2415,11 @@ async function runDockerComposePreview({
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Compose stack failed to start.'
+    await cleanupComposeProjectArtifacts({
+      composeProjectName,
+      composeFileAbsolutePath: previewComposeFilePath,
+      logPath: getBuildLogPath(jobId),
+    })
     db.prepare(
       `UPDATE docker_deployments
        SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
@@ -2267,6 +2734,18 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
             ? req.files.contextTar[0]
             : req.files.contextTar
           : null
+      const uploadedEnvFile =
+        req.files && req.files.envFile
+          ? Array.isArray(req.files.envFile)
+            ? req.files.envFile[0]
+            : req.files.envFile
+          : null
+      const uploadedNginxConfigFile =
+        req.files && req.files.nginxConfigFile
+          ? Array.isArray(req.files.nginxConfigFile)
+            ? req.files.nginxConfigFile[0]
+            : req.files.nginxConfigFile
+          : null
 
       if (!req.files || (!req.files.files && !uploadedDockerfile && !uploadedComposeFile && !uploadedContextTar)) {
         return res.status(400).json({ error: 'Upload Dockerfile + compose, Dockerfile + compose + tar, compose + tar, or a Dockerfile.' })
@@ -2290,10 +2769,44 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
 
         try {
           await extractContextArchive(archivePath, definitionDir)
-          await writeContainerDefinitionEntryFiles({
+          const writtenFiles = await writeContainerDefinitionEntryFiles({
             definitionDir,
             uploadedDockerfile,
             uploadedComposeFile,
+            uploadedEnvFile,
+            uploadedNginxConfigFile,
+          })
+          const uploadedEnvSource = buildUploadedEnvSource(definitionDir, writtenFiles.envFilePath, uploadedEnvFile)
+          const uploadedNginxConfigSource = buildUploadedNginxConfigSource(
+            definitionDir,
+            writtenFiles.nginxConfigFilePath,
+            uploadedNginxConfigFile,
+          )
+          await writeContainerUploadRecord(definitionDir, {
+            mode: 'docker-compose-context',
+            sources: [
+              {
+                kind: 'dockerfile',
+                fileName: uploadedDockerfile.name,
+                relativePath: writtenFiles.dockerfilePath
+                  ? path.relative(definitionDir, writtenFiles.dockerfilePath).split(path.sep).join('/')
+                  : null,
+              },
+              {
+                kind: 'compose',
+                fileName: uploadedComposeFile.name,
+                relativePath: writtenFiles.composeFilePath
+                  ? path.relative(definitionDir, writtenFiles.composeFilePath).split(path.sep).join('/')
+                  : null,
+              },
+              {
+                kind: 'context-tar',
+                fileName: uploadedContextTar.name,
+                relativePath: null,
+              },
+              ...(uploadedEnvSource ? [uploadedEnvSource] : []),
+              ...(uploadedNginxConfigSource ? [uploadedNginxConfigSource] : []),
+            ],
           })
         } catch (error) {
           await removeDirectoryContents(definitionDir)
@@ -2311,10 +2824,39 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
 
       if (uploadedDockerfile && uploadedComposeFile && !uploadedContextTar && !req.files.files) {
         const definitionDir = getProjectContainerDirectory(projectId, requestedDefinitionName)
-        await writeContainerDefinitionEntryFiles({
+        const writtenFiles = await writeContainerDefinitionEntryFiles({
           definitionDir,
           uploadedDockerfile,
           uploadedComposeFile,
+          uploadedEnvFile,
+          uploadedNginxConfigFile,
+        })
+        const uploadedEnvSource = buildUploadedEnvSource(definitionDir, writtenFiles.envFilePath, uploadedEnvFile)
+        const uploadedNginxConfigSource = buildUploadedNginxConfigSource(
+          definitionDir,
+          writtenFiles.nginxConfigFilePath,
+          uploadedNginxConfigFile,
+        )
+        await writeContainerUploadRecord(definitionDir, {
+          mode: 'docker-compose',
+          sources: [
+            {
+              kind: 'dockerfile',
+              fileName: uploadedDockerfile.name,
+              relativePath: writtenFiles.dockerfilePath
+                ? path.relative(definitionDir, writtenFiles.dockerfilePath).split(path.sep).join('/')
+                : null,
+            },
+            {
+              kind: 'compose',
+              fileName: uploadedComposeFile.name,
+              relativePath: writtenFiles.composeFilePath
+                ? path.relative(definitionDir, writtenFiles.composeFilePath).split(path.sep).join('/')
+                : null,
+            },
+            ...(uploadedEnvSource ? [uploadedEnvSource] : []),
+            ...(uploadedNginxConfigSource ? [uploadedNginxConfigSource] : []),
+          ],
         })
 
         return res.status(201).json({
@@ -2342,9 +2884,36 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
 
         try {
           await extractContextArchive(archivePath, definitionDir)
-          await writeContainerDefinitionEntryFiles({
+          const writtenFiles = await writeContainerDefinitionEntryFiles({
             definitionDir,
             uploadedComposeFile,
+            uploadedEnvFile,
+            uploadedNginxConfigFile,
+          })
+          const uploadedEnvSource = buildUploadedEnvSource(definitionDir, writtenFiles.envFilePath, uploadedEnvFile)
+          const uploadedNginxConfigSource = buildUploadedNginxConfigSource(
+            definitionDir,
+            writtenFiles.nginxConfigFilePath,
+            uploadedNginxConfigFile,
+          )
+          await writeContainerUploadRecord(definitionDir, {
+            mode: 'compose-context',
+            sources: [
+              {
+                kind: 'compose',
+                fileName: uploadedComposeFile.name,
+                relativePath: writtenFiles.composeFilePath
+                  ? path.relative(definitionDir, writtenFiles.composeFilePath).split(path.sep).join('/')
+                  : null,
+              },
+              {
+                kind: 'context-tar',
+                fileName: uploadedContextTar.name,
+                relativePath: null,
+              },
+              ...(uploadedEnvSource ? [uploadedEnvSource] : []),
+              ...(uploadedNginxConfigSource ? [uploadedNginxConfigSource] : []),
+            ],
           })
         } catch (error) {
           await removeDirectoryContents(definitionDir)
@@ -2362,8 +2931,32 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
 
       if (uploadedDockerfile && !req.files.files) {
         const definitionDir = getProjectContainerDirectory(projectId, requestedDefinitionName)
-        await ensureDirectory(definitionDir)
-        await uploadedDockerfile.mv(path.join(definitionDir, 'Dockerfile'))
+        const writtenFiles = await writeContainerDefinitionEntryFiles({
+          definitionDir,
+          uploadedDockerfile,
+          uploadedEnvFile,
+          uploadedNginxConfigFile,
+        })
+        const uploadedEnvSource = buildUploadedEnvSource(definitionDir, writtenFiles.envFilePath, uploadedEnvFile)
+        const uploadedNginxConfigSource = buildUploadedNginxConfigSource(
+          definitionDir,
+          writtenFiles.nginxConfigFilePath,
+          uploadedNginxConfigFile,
+        )
+        await writeContainerUploadRecord(definitionDir, {
+          mode: 'dockerfile',
+          sources: [
+            {
+              kind: 'dockerfile',
+              fileName: uploadedDockerfile.name,
+              relativePath: writtenFiles.dockerfilePath
+                ? path.relative(definitionDir, writtenFiles.dockerfilePath).split(path.sep).join('/')
+                : null,
+            },
+            ...(uploadedEnvSource ? [uploadedEnvSource] : []),
+            ...(uploadedNginxConfigSource ? [uploadedNginxConfigSource] : []),
+          ],
+        })
 
         return res.status(201).json({
           uploadedDefinitionName: requestedDefinitionName,
@@ -2418,6 +3011,15 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         await removeDirectoryContents(definitionDir)
         return res.status(400).json({ error: 'Dockerfile is required in the uploaded container bundle.' })
       }
+
+      await writeContainerUploadRecord(definitionDir, {
+        mode: 'bundle',
+        sources: preparedFiles.map((item) => ({
+          kind: 'bundle-file',
+          fileName: item.uploadedFile.name,
+          relativePath: item.relativeFilePath,
+        })),
+      })
 
       return res.status(201).json({
         uploadedDefinitionName: definitionName,

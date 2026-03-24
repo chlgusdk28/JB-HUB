@@ -1,4 +1,6 @@
-const API_V1_BASE = '/api/v1'
+import { getApiBase } from './api-base'
+
+const API_V1_BASE = getApiBase('/api/v1')
 
 export interface PublicSiteContent {
   [key: string]: string

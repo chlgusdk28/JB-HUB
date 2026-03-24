@@ -4,12 +4,11 @@ import App from './app/App'
 import { ErrorBoundary } from './app/components/ErrorBoundary'
 import { installChunkRecoveryHandlers } from './app/lib/chunk-recovery'
 import { ToastProvider } from './app/components/ToastProvider'
+import { resolveApiUrl } from './app/lib/api-base'
 import './styles/index.css'
 
-// Optional API origin rewrite for preview/static runs.
-// When VITE_API_BASE_URL is set, all relative /api requests are routed to that origin.
-const configuredApiBase = String(import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/+$/, '')
-if (configuredApiBase && typeof window !== 'undefined') {
+// Route relative API calls to the active local API origin when preview/dev runs on a different port.
+if (typeof window !== 'undefined') {
   const originalFetch = window.fetch.bind(window)
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     const isStringInput = typeof input === 'string'
@@ -18,10 +17,15 @@ if (configuredApiBase && typeof window !== 'undefined') {
       return originalFetch(input, init)
     }
 
-    const nextUrl = `${configuredApiBase}${rawUrl}`
+    const nextUrl = resolveApiUrl(rawUrl)
     if (isStringInput || input instanceof URL) {
       return originalFetch(nextUrl, init)
     }
+
+    if (nextUrl === rawUrl) {
+      return originalFetch(input, init)
+    }
+
     return originalFetch(new Request(nextUrl, input), init)
   }
 }

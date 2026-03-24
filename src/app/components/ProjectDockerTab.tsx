@@ -244,6 +244,37 @@ function formatPortMappingLabel(containerPort?: number | null, hostPort?: number
   return '외부로 공개된 포트를 찾지 못했습니다.'
 }
 
+function formatUploadSourceKind(kind?: string | null) {
+  const normalizedKind = typeof kind === 'string' ? kind.trim().toLowerCase() : ''
+
+  switch (normalizedKind) {
+    case 'dockerfile':
+      return 'Dockerfile'
+    case 'compose':
+      return 'Compose'
+    case 'env':
+      return '환경 파일'
+    case 'nginx-config':
+      return 'Nginx 설정'
+    case 'context-tar':
+      return '컨텍스트 tar'
+    case 'archive':
+      return '아카이브'
+    case 'bundle-file':
+      return '번들'
+    default:
+      return '파일'
+  }
+}
+
+function formatUploadSourceName(kind: string, fileName: string, relativePath?: string | null) {
+  if (kind === 'bundle-file' && typeof relativePath === 'string' && relativePath.trim()) {
+    return relativePath.trim()
+  }
+
+  return fileName
+}
+
 export function ProjectDockerTab({
   projectId,
   currentUserName = '',
@@ -259,13 +290,22 @@ export function ProjectDockerTab({
   const [isLogLoading, setIsLogLoading] = useState(false)
   const [dockerfile, setDockerfile] = useState<File | null>(null)
   const [composeFile, setComposeFile] = useState<File | null>(null)
+  const [envFile, setEnvFile] = useState<File | null>(null)
+  const [nginxConfigFile, setNginxConfigFile] = useState<File | null>(null)
   const [contextTar, setContextTar] = useState<File | null>(null)
   const runtimeStatus = overview?.runtime ?? overview?.docker ?? null
+  const isRuntimeLoading = isLoading && !overview && !runtimeStatus
   const hasContextTar = Boolean(contextTar)
+  const hasEnvFile = Boolean(envFile)
+  const hasNginxConfigFile = Boolean(nginxConfigFile)
+  const hasSupplementalConfigFiles = hasEnvFile || hasNginxConfigFile
   const dockerComposeUploadLabel = hasContextTar ? '컨텍스트 업로드 후 바로 빌드' : '정의 갱신 후 바로 빌드'
   const dockerComposeUploadHint = hasContextTar
     ? '선택한 tar로 기존 빌드 컨텍스트를 교체한 뒤 바로 빌드를 시작합니다.'
     : 'tar를 비워두면 기존 빌드 컨텍스트를 유지하고 Dockerfile과 compose 정의만 교체합니다.'
+  const dockerComposeSupportFileHint = hasSupplementalConfigFiles
+    ? '선택한 env 파일은 .env로, nginx 설정 파일은 nginx.conf로 저장되어 compose와 Dockerfile에서 바로 참조할 수 있습니다.'
+    : 'env 파일이나 nginx.conf가 있으면 함께 올릴 수 있고, 업로드하면 compose 옆에 저장됩니다.'
 
   async function loadOverview({ keepSelectedJob = true }: { keepSelectedJob?: boolean } = {}) {
     if (!projectId) {
@@ -325,6 +365,8 @@ export function ProjectDockerTab({
   )
 
   const hiddenComposeCount = Math.max(0, composeDefinitions.length - (visibleDefinition ? 1 : 0))
+  const visibleUploadSources = useMemo(() => (visibleDefinition?.uploadSources ?? []).slice(0, 12), [visibleDefinition?.uploadSources])
+  const hiddenUploadSourceCount = Math.max(0, (visibleDefinition?.uploadSources ?? []).length - visibleUploadSources.length)
 
   const hasActiveWork = useMemo(() => {
     if (!overview || !visibleDefinition) {
@@ -388,6 +430,7 @@ export function ProjectDockerTab({
     setIsUploading(true)
     setUploadProgress(0)
     const willReplaceContext = Boolean(contextTar)
+    const willUploadSupplementalFiles = Boolean(envFile || nginxConfigFile)
 
     try {
       await uploadProjectDockerComposeFiles(
@@ -400,6 +443,8 @@ export function ProjectDockerTab({
           onProgress: setUploadProgress,
         },
         contextTar,
+        envFile,
+        nginxConfigFile,
       )
 
       const payload = await startProjectContainerBuild(
@@ -419,11 +464,17 @@ export function ProjectDockerTab({
 
       setDockerfile(null)
       setComposeFile(null)
+      setEnvFile(null)
+      setNginxConfigFile(null)
       setContextTar(null)
       success(
         willReplaceContext
-          ? 'Dockerfile, compose, 컨텍스트를 업로드했고 자동 빌드와 사이트 미리보기를 시작했습니다.'
-          : 'Dockerfile과 compose를 업로드했고 기존 컨텍스트를 유지한 채 자동 빌드와 사이트 미리보기를 시작했습니다.',
+          ? willUploadSupplementalFiles
+            ? 'Dockerfile, compose, 추가 설정 파일, 컨텍스트를 업로드했고 자동 빌드와 사이트 미리보기를 시작했습니다.'
+            : 'Dockerfile, compose, 컨텍스트를 업로드했고 자동 빌드와 사이트 미리보기를 시작했습니다.'
+          : willUploadSupplementalFiles
+            ? 'Dockerfile, compose, 추가 설정 파일을 업로드했고 기존 컨텍스트를 유지한 채 자동 빌드와 사이트 미리보기를 시작했습니다.'
+            : 'Dockerfile과 compose를 업로드했고 기존 컨텍스트를 유지한 채 자동 빌드와 사이트 미리보기를 시작했습니다.',
       )
       await loadOverview()
       if (nextJobId) {
@@ -537,17 +588,26 @@ export function ProjectDockerTab({
             </p>
             <div className="flex flex-wrap gap-2">
               <span
-                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${buildStatusTone(
-                  runtimeStatus?.available ? 'running' : 'failed',
-                )}`}
+                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                  isRuntimeLoading
+                    ? 'border-slate-200 bg-slate-100 text-slate-600'
+                    : buildStatusTone(runtimeStatus?.available ? 'running' : 'failed')
+                }`}
               >
-                {formatDockerAvailabilityLabel(
-                  Boolean(runtimeStatus?.available),
-                  runtimeStatus?.version,
-                  runtimeStatus?.label,
+                {isRuntimeLoading ? (
+                  <>
+                    <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    Docker 엔진 상태 확인 중
+                  </>
+                ) : (
+                  formatDockerAvailabilityLabel(
+                    Boolean(runtimeStatus?.available),
+                    runtimeStatus?.version,
+                    runtimeStatus?.label,
+                  )
                 )}
               </span>
-              {runtimeStatus?.error ? <Pill variant="subtle">{formatDockerMessage(runtimeStatus.error)}</Pill> : null}
+              {!isRuntimeLoading && runtimeStatus?.error ? <Pill variant="subtle">{formatDockerMessage(runtimeStatus.error)}</Pill> : null}
             </div>
           </div>
 
@@ -558,10 +618,11 @@ export function ProjectDockerTab({
           <div className="hidden min-w-[360px] flex-col gap-3 md:flex">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               업로드 대상은 항상 <span className="font-semibold text-slate-900">main</span> 입니다. Dockerfile과 compose만 올리면 기존
-              컨텍스트를 유지하고 정의 파일만 교체합니다. tar까지 함께 올리면 컨텍스트도 새로 교체한 뒤 바로 빌드를 시작합니다.
+              컨텍스트를 유지하고 정의 파일만 교체합니다. env 파일과 nginx.conf를 함께 올리면 compose 옆의 루트 설정 파일을 갱신하고,
+              tar까지 함께 올리면 컨텍스트도 새로 교체한 뒤 바로 빌드를 시작합니다.
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <label
                 className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
                   canManage
@@ -614,6 +675,48 @@ export function ProjectDockerTab({
               >
                 <input
                   type="file"
+                  accept=".env,text/plain"
+                  className="sr-only"
+                  disabled={!canManage || isUploading}
+                  onChange={(event) => setEnvFile(event.target.files?.[0] ?? null)}
+                />
+                <span className="flex items-center gap-2 font-medium">
+                  <FileCode2 className="h-4 w-4" />
+                  env 파일 선택
+                </span>
+                <span className="mt-1 block text-xs text-slate-500">{envFile?.name ?? '선택 안 함: 기존 env 유지'}</span>
+              </label>
+              <label
+                className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
+                  canManage
+                    ? 'cursor-pointer border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400'
+                    : 'border-slate-200 bg-slate-100 text-slate-400'
+                }`}
+              >
+                <input
+                  type="file"
+                  accept=".conf,text/plain"
+                  className="sr-only"
+                  disabled={!canManage || isUploading}
+                  onChange={(event) => setNginxConfigFile(event.target.files?.[0] ?? null)}
+                />
+                <span className="flex items-center gap-2 font-medium">
+                  <FileCode2 className="h-4 w-4" />
+                  nginx.conf 선택
+                </span>
+                <span className="mt-1 block text-xs text-slate-500">
+                  {nginxConfigFile?.name ?? '선택 안 함: 기존 nginx.conf 유지'}
+                </span>
+              </label>
+              <label
+                className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
+                  canManage
+                    ? 'cursor-pointer border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400'
+                    : 'border-slate-200 bg-slate-100 text-slate-400'
+                }`}
+              >
+                <input
+                  type="file"
                   accept=".tar,application/x-tar,application/tar"
                   className="sr-only"
                   disabled={!canManage || isUploading}
@@ -630,12 +733,27 @@ export function ProjectDockerTab({
             </div>
 
             <div className="flex flex-col items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-              <p className="text-xs leading-5 text-slate-600">{dockerComposeUploadHint}</p>
-              {contextTar ? (
-                <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setContextTar(null)}>
-                  컨텍스트 해제
-                </OpalButton>
-              ) : null}
+              <div className="space-y-1">
+                <p className="text-xs leading-5 text-slate-600">{dockerComposeUploadHint}</p>
+                <p className="text-xs leading-5 text-slate-500">{dockerComposeSupportFileHint}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {envFile ? (
+                  <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setEnvFile(null)}>
+                    env 해제
+                  </OpalButton>
+                ) : null}
+                {nginxConfigFile ? (
+                  <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setNginxConfigFile(null)}>
+                    nginx 해제
+                  </OpalButton>
+                ) : null}
+                {contextTar ? (
+                  <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setContextTar(null)}>
+                    컨텍스트 해제
+                  </OpalButton>
+                ) : null}
+              </div>
             </div>
 
             {isUploading ? <Progress value={uploadProgress} /> : null}
@@ -717,6 +835,38 @@ export function ProjectDockerTab({
                   {visibleDefinition.warnings.map((warningMessage) => (
                     <p key={warningMessage}>{formatDockerMessage(warningMessage)}</p>
                   ))}
+                </div>
+              ) : null}
+
+              {visibleDefinition.uploadSources.length ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-slate-900">
+                      {visibleDefinition.uploadRecordedAt ? '업로드 원본' : '포함 파일'}
+                    </span>
+                    {visibleDefinition.uploadRecordedAt ? (
+                      <span className="text-slate-500">{formatDateTime(visibleDefinition.uploadRecordedAt)} 기준</span>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {visibleUploadSources.map((uploadSource) => (
+                      <span
+                        key={`${uploadSource.kind}-${uploadSource.relativePath ?? uploadSource.fileName}`}
+                        className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700"
+                      >
+                        {`${formatUploadSourceKind(uploadSource.kind)} ${formatUploadSourceName(
+                          uploadSource.kind,
+                          uploadSource.fileName,
+                          uploadSource.relativePath,
+                        )}`}
+                      </span>
+                    ))}
+                    {hiddenUploadSourceCount > 0 ? (
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">
+                        + {hiddenUploadSourceCount}개
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 

@@ -1,6 +1,7 @@
+import { getApiBase } from './api-base'
 import { createProjectEditHeaders } from './project-edit-token-storage'
 
-const API_BASE = '/api/v1'
+const API_BASE = getApiBase('/api/v1')
 const UPLOAD_REQUEST_TIMEOUT_MS = 30 * 60 * 1000
 
 export interface ProjectContainerBuildJob {
@@ -54,6 +55,13 @@ export interface ProjectContainerDeployment {
   stoppedAt: string | null
 }
 
+export interface ProjectContainerUploadSource {
+  kind: string
+  fileName: string
+  relativePath: string | null
+  source: string
+}
+
 export interface ProjectContainerDefinition {
   name: string
   rootPath: string
@@ -64,6 +72,9 @@ export interface ProjectContainerDefinition {
   containerPort: number | null
   healthcheckPath: string | null
   readinessTimeoutSec: number | null
+  uploadMode: string | null
+  uploadRecordedAt: string | null
+  uploadSources: ProjectContainerUploadSource[]
   files: string[]
   warnings: string[]
   lastBuildJob: ProjectContainerBuildJob | null
@@ -219,10 +230,34 @@ function buildDockerfileUploadFormData(file: File, definitionName?: string) {
   return formData
 }
 
-function buildComposeUploadFormData(composeFile: File, contextTar: File, definitionName?: string) {
+function appendOptionalEnvFile(formData: FormData, envFile?: File | null) {
+  if (!envFile) {
+    return
+  }
+
+  formData.append('envFile', envFile, envFile.name || '.env')
+}
+
+function appendOptionalNginxConfigFile(formData: FormData, nginxConfigFile?: File | null) {
+  if (!nginxConfigFile) {
+    return
+  }
+
+  formData.append('nginxConfigFile', nginxConfigFile, nginxConfigFile.name || 'nginx.conf')
+}
+
+function buildComposeUploadFormData(
+  composeFile: File,
+  contextTar: File,
+  definitionName?: string,
+  envFile?: File | null,
+  nginxConfigFile?: File | null,
+) {
   const formData = new FormData()
   formData.append('composeFile', composeFile, composeFile.name || 'docker-compose.yml')
   formData.append('contextTar', contextTar, contextTar.name || 'context.tar')
+  appendOptionalEnvFile(formData, envFile)
+  appendOptionalNginxConfigFile(formData, nginxConfigFile)
 
   if (definitionName) {
     formData.append('definitionName', definitionName)
@@ -236,6 +271,8 @@ function buildDockerComposeUploadFormData(
   composeFile: File,
   definitionName?: string,
   contextTar?: File | null,
+  envFile?: File | null,
+  nginxConfigFile?: File | null,
 ) {
   const formData = new FormData()
   formData.append('dockerfile', dockerfile, dockerfile.name || 'Dockerfile')
@@ -243,6 +280,8 @@ function buildDockerComposeUploadFormData(
   if (contextTar) {
     formData.append('contextTar', contextTar, contextTar.name || 'context.tar')
   }
+  appendOptionalEnvFile(formData, envFile)
+  appendOptionalNginxConfigFile(formData, nginxConfigFile)
 
   if (definitionName) {
     formData.append('definitionName', definitionName)
@@ -278,10 +317,12 @@ export async function uploadProjectComposeBundle(
   composeFile: File,
   contextTar: File,
   options: UploadComposeBundleOptions,
+  envFile?: File | null,
+  nginxConfigFile?: File | null,
 ) {
   return await sendUploadRequest<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>(
     `${API_BASE}/projects/${projectId}/containers/upload`,
-    buildComposeUploadFormData(composeFile, contextTar, options.definitionName),
+    buildComposeUploadFormData(composeFile, contextTar, options.definitionName, envFile, nginxConfigFile),
     projectId,
     options,
   )
@@ -293,10 +334,19 @@ export async function uploadProjectDockerComposeFiles(
   composeFile: File,
   options: UploadDockerComposeOptions,
   contextTar?: File | null,
+  envFile?: File | null,
+  nginxConfigFile?: File | null,
 ) {
   return await sendUploadRequest<{ uploadedDefinitionName?: string; definitions?: ProjectContainerDefinition[] }>(
     `${API_BASE}/projects/${projectId}/containers/upload`,
-    buildDockerComposeUploadFormData(dockerfile, composeFile, options.definitionName, contextTar),
+    buildDockerComposeUploadFormData(
+      dockerfile,
+      composeFile,
+      options.definitionName,
+      contextTar,
+      envFile,
+      nginxConfigFile,
+    ),
     projectId,
     options,
   )

@@ -1,14 +1,14 @@
 services:
   jbhub:
-    image: jbhub-finance:finance-runtime
+    image: ${JBHUB_RUNTIME_IMAGE:-jbhub-finance:finance-runtime}
     container_name: jbhub-finance
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${JBHUB_RUNTIME_PORT:-3031}:${JBHUB_RUNTIME_PORT:-3031}"
     environment:
-      API_PORT: "8080"
+      API_PORT: "${JBHUB_RUNTIME_PORT:-3031}"
       SERVE_STATIC_DIST: "1"
-      CORS_ALLOWED_ORIGINS: "http://127.0.0.1:8080,http://localhost:8080"
+      CORS_ALLOWED_ORIGINS: "http://127.0.0.1:${JBHUB_RUNTIME_PORT:-3031},http://localhost:${JBHUB_RUNTIME_PORT:-3031}"
       DOCKER_PREVIEW_HOST: "host.docker.internal"
       API_JWT_HS256_SECRET: "change-this-secret-before-prod"
       ADMIN_DEFAULT_USERNAME: "admin"

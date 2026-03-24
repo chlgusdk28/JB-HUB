@@ -995,7 +995,7 @@ export default function RestoredHubApp() {
   ]
 
   const pageDescriptions: Record<PageId, string> = {
-    home: '추천 프로젝트, 최근 활동, 즐겨찾기 요약을 한 화면에서 확인합니다.',
+    home: '추천 프로젝트와 활동을 한눈에 봅니다.',
     projects: '카테고리와 부서, 인기 지표를 기준으로 프로젝트를 빠르게 탐색합니다.',
     workspace: '최근 본 프로젝트와 즐겨찾기, 개인 업무 흐름을 중심으로 정리합니다.',
     dashboard: '관심 프로젝트와 활동 지표를 대시보드 형태로 살펴봅니다.',
@@ -1042,7 +1042,7 @@ export default function RestoredHubApp() {
         navigationSections={navigationSections}
         activeNavigationId={activeNavigationId}
         onSelectNavigation={navigateToPage}
-        headerEyebrow="허브 워크스페이스"
+        headerEyebrow="워크스페이스"
         headerTitle={headerTitle}
         headerDescription={headerDescription}
         headerActions={
@@ -1067,11 +1067,11 @@ export default function RestoredHubApp() {
         }
         headerMeta={
           <>
-            <Pill variant="subtle">사용자 {CURRENT_USER.name}</Pill>
-            <Pill variant="subtle">부서 {CURRENT_USER.department}</Pill>
+            <Pill variant="subtle">{CURRENT_USER.name}</Pill>
+            <Pill variant="subtle">{CURRENT_USER.department}</Pill>
             <Pill variant="subtle">프로젝트 {projects.length}</Pill>
             <Pill variant="subtle">즐겨찾기 {favoriteProjectIds.length}</Pill>
-            <Pill variant="subtle">최근 본 항목 {recentProjectIds.length}</Pill>
+            <Pill variant="subtle">최근 {recentProjectIds.length}</Pill>
             {selectedProject && !isProjectDetailPage ? <Pill variant="subtle">선택 프로젝트 {selectedProject.author}</Pill> : null}
           </>
         }

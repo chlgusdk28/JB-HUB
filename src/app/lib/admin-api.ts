@@ -1,5 +1,7 @@
-const API_ADMIN_BASE = '/api/admin'
-const API_V1_BASE = '/api/v1'
+import { getApiBase } from './api-base'
+
+const API_ADMIN_BASE = getApiBase('/api/admin')
+const API_V1_BASE = getApiBase('/api/v1')
 
 export type AdminRole = 'super_admin' | 'admin' | 'moderator'
 

@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Download, GitFork, Link2, MessageSquare, Send, Star, TrendingUp } from 'lucide-react'
 import type { Project } from '../lib/project-utils'
-import { FilesTab } from './FilesTab'
 import { ProjectDockerTab } from './ProjectDockerTab'
+import { ProjectRepositoryTab } from './ProjectRepositoryTab'
 import { QuietTabs } from './QuietTabs'
 import { MarkdownContent, MetricCard, PageHeader, PageShell, Pill } from './common'
 import { OpalButton } from './opal/OpalButton'
@@ -45,7 +45,7 @@ interface DetailProject {
 
 const DETAIL_TABS = [
   { id: 'overview', label: '개요' },
-  { id: 'files', label: '파일' },
+  { id: 'repository', label: 'Repository' },
   { id: 'containers', label: 'Container' },
   { id: 'metrics', label: '지표' },
   { id: 'comments', label: '댓글' },
@@ -300,12 +300,12 @@ export function QuietProjectDetail({
         </section>
       ) : null}
 
-      {activeTab === 'files' ? (
-        <FilesTab
+      {activeTab === 'repository' ? (
+        <ProjectRepositoryTab
           projectId={detailProject.id}
           currentUserName={currentUserName}
           projectAuthor={detailProject.author}
-          canUpload={canManageFiles}
+          canManage={canManageFiles}
         />
       ) : null}
 

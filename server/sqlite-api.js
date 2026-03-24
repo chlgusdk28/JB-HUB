@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import Database from 'better-sqlite3'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import fs, { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import path, { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
@@ -12,7 +12,7 @@ import fileUpload from 'express-fileupload'
 import helmet from 'helmet'
 import { attachProjectContainerRoutes } from './project-containers.js'
 import { createToolsRouter } from './tools-api.js'
-import { ensureRuntimeLayout, SQLITE_DB_PATH, UPLOAD_TEMP_DIR } from './runtime-paths.js'
+import { ensureRuntimeLayout, PROJECT_FILES_ROOT, SQLITE_DB_PATH, UPLOAD_TEMP_DIR } from './runtime-paths.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DB_PATH = SQLITE_DB_PATH
@@ -25,13 +25,120 @@ const API_PORT = Number(process.env.API_PORT) || 8787
 const JWT_SECRET = process.env.API_JWT_HS256_SECRET || 'change-this-secret-min-32-chars-long'
 const ADMIN_USERNAME = process.env.ADMIN_DEFAULT_USERNAME || 'admin'
 const ADMIN_PASSWORD = process.env.ADMIN_DEFAULT_PASSWORD || 'admin123'
-const CORS_ORIGINS = process.env.CORS_ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://127.0.0.1:3000']
+const CORS_ORIGINS = new Set(
+  (process.env.CORS_ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://127.0.0.1:3000'])
+    .map((value) => String(value).trim())
+    .filter(Boolean),
+)
 const MAX_UPLOAD_FILE_SIZE_BYTES = 512 * 1024 * 1024
+const MAX_TEXT_PREVIEW_BYTES = 256 * 1024
+const MAX_PROJECT_README_CHAR_COUNT = 200000
 const SERVE_STATIC_DIST = process.env.SERVE_STATIC_DIST === '1'
 const DIST_DIR = join(process.cwd(), 'dist')
 const DIST_INDEX_PATH = join(DIST_DIR, 'index.html')
 const FILE_UPLOAD_LIMIT_ERROR = {
   error: 'Uploaded file is too large. The maximum size is 512MB per file.',
+}
+const TEXT_FILE_EXTENSIONS = new Set([
+  '.c',
+  '.cc',
+  '.cpp',
+  '.css',
+  '.csv',
+  '.go',
+  '.h',
+  '.hpp',
+  '.html',
+  '.java',
+  '.js',
+  '.json',
+  '.jsx',
+  '.md',
+  '.mjs',
+  '.py',
+  '.rb',
+  '.rs',
+  '.sh',
+  '.sql',
+  '.svg',
+  '.toml',
+  '.ts',
+  '.tsx',
+  '.txt',
+  '.xml',
+  '.yaml',
+  '.yml',
+])
+const TEXT_FILE_NAMES = new Set([
+  '.env',
+  '.env.example',
+  '.gitignore',
+  '.npmrc',
+  '.prettierrc',
+  'dockerfile',
+  'license',
+  'makefile',
+  'readme',
+  'readme.md',
+])
+const RESTRICTED_PROJECT_PATH_SEGMENTS = new Set([
+  '.aws',
+  '.git',
+  '.hg',
+  '.kube',
+  '.ssh',
+  '.svn',
+])
+const RESTRICTED_PROJECT_FILE_PATTERNS = [
+  /^\.env(?:\..+)?$/i,
+  /^id_(rsa|dsa|ecdsa|ed25519)$/i,
+  /^(authorized_keys|known_hosts)$/i,
+  /\.(key|pem|p12|pfx|jks|kdbx)$/i,
+]
+const ALLOWED_PROJECT_HIDDEN_FILES = new Set([
+  '.dockerignore',
+  '.env.example',
+  '.gitignore',
+])
+
+function isPrivateIpv4Host(hostname) {
+  if (/^10\./.test(hostname)) {
+    return true
+  }
+
+  if (/^192\.168\./.test(hostname)) {
+    return true
+  }
+
+  const match = hostname.match(/^172\.(\d{1,3})\./)
+  if (!match) {
+    return false
+  }
+
+  const secondOctet = Number.parseInt(match[1], 10)
+  return Number.isFinite(secondOctet) && secondOctet >= 16 && secondOctet <= 31
+}
+
+function isLocalDevelopmentOrigin(origin) {
+  if (typeof origin !== 'string' || !origin.trim()) {
+    return false
+  }
+
+  try {
+    const parsed = new URL(origin)
+    const hostname = parsed.hostname.trim().toLowerCase()
+    return (
+      parsed.protocol === 'http:' &&
+      (hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '::1' ||
+        hostname === '[::1]' ||
+        hostname.endsWith('.local') ||
+        isPrivateIpv4Host(hostname))
+    )
+  } catch {
+    return false
+  }
 }
 
 // Express 앱
@@ -42,7 +149,14 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }))
 app.use(cors({
-  origin: CORS_ORIGINS,
+  origin(origin, callback) {
+    if (!origin || CORS_ORIGINS.has(origin) || isLocalDevelopmentOrigin(origin)) {
+      callback(null, true)
+      return
+    }
+
+    callback(new Error('CORS origin is not allowed.'))
+  },
   credentials: true
 }))
 app.use(fileUpload({
@@ -101,6 +215,411 @@ function generateProjectEditToken(project) {
       expiresIn: '30d',
     },
   )
+}
+
+function readSingleHeader(headerValue) {
+  if (Array.isArray(headerValue)) {
+    return String(headerValue[0] ?? '')
+  }
+
+  return typeof headerValue === 'string' ? headerValue : ''
+}
+
+function sanitizeString(input, maxLength = 120, allowSpecialChars = false) {
+  if (typeof input !== 'string') {
+    return ''
+  }
+
+  let sanitized = input.trim()
+  sanitized = sanitized.replace(/<script[^>]*>.*?<\/script>/gi, '')
+  sanitized = sanitized.replace(/<[^>]*>/g, '')
+  sanitized = sanitized.slice(0, maxLength)
+  sanitized = sanitized.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
+
+  if (!allowSpecialChars) {
+    sanitized = sanitized.replace(/[^\p{L}\p{N}\s\-_.@]/gu, '')
+  }
+
+  return sanitized
+}
+
+function buildAttachmentContentDisposition(fileName) {
+  const safeName = String(fileName ?? 'download').replace(/[\\/]/g, '_')
+  const asciiFallback = safeName.replace(/[^\x20-\x7E]/g, '_')
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(safeName)}`
+}
+
+function sanitizeProjectPathSegment(segment, fallback = 'item') {
+  const normalized = String(segment ?? '').trim()
+  if (!normalized || normalized === '.' || normalized === '..') {
+    return fallback
+  }
+
+  const sanitized = normalized.replace(/[<>:"|?*\u0000-\u001f]/g, '_')
+  return sanitized.length > 0 ? sanitized : fallback
+}
+
+function readProjectActorName(req) {
+  return sanitizeString(readSingleHeader(req.headers['x-jb-user-name']), 120)
+}
+
+function readProjectEditToken(req) {
+  return readSingleHeader(req.headers['x-jb-project-edit-token']).trim()
+}
+
+function normalizeProjectActorName(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+function hasValidProjectEditToken(project, editToken) {
+  if (!project || typeof editToken !== 'string' || !editToken.trim()) {
+    return false
+  }
+
+  try {
+    const decoded = jwt.verify(editToken, JWT_SECRET)
+    if (!decoded || typeof decoded !== 'object') {
+      return false
+    }
+
+    return (
+      decoded.type === 'project-edit' &&
+      Number(decoded.projectId) === Number(project.id) &&
+      normalizeProjectActorName(decoded.author) === normalizeProjectActorName(project.author)
+    )
+  } catch {
+    return false
+  }
+}
+
+function hasProjectWriteAccess(req, project) {
+  if (hasValidProjectEditToken(project, readProjectEditToken(req))) {
+    return true
+  }
+
+  const normalizedActor = normalizeProjectActorName(readProjectActorName(req))
+  const normalizedAuthor = normalizeProjectActorName(project?.author)
+  return normalizedActor.length > 0 && normalizedAuthor.length > 0 && normalizedActor === normalizedAuthor
+}
+
+function normalizeProjectRelativePath(inputPath, fallbackName = 'file') {
+  const rawPath = typeof inputPath === 'string' && inputPath.trim() ? inputPath : fallbackName
+  const segments = rawPath
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .split('/')
+    .filter(Boolean)
+
+  if (segments.length === 0) {
+    return sanitizeProjectPathSegment(fallbackName, 'file')
+  }
+
+  return segments
+    .map((segment, index) =>
+      sanitizeProjectPathSegment(segment, index === segments.length - 1 ? fallbackName : 'folder'),
+    )
+    .join('/')
+}
+
+function isRestrictedProjectFilePath(relativePath) {
+  const normalizedPath = String(relativePath || '').replace(/\\/g, '/').replace(/^\/+/, '')
+  if (!normalizedPath) {
+    return false
+  }
+
+  const segments = normalizedPath.split('/').filter(Boolean)
+  if (segments.length === 0) {
+    return false
+  }
+
+  if (segments.some((segment) => RESTRICTED_PROJECT_PATH_SEGMENTS.has(segment.toLowerCase()))) {
+    return true
+  }
+
+  const fileName = segments[segments.length - 1].toLowerCase()
+  if (ALLOWED_PROJECT_HIDDEN_FILES.has(fileName)) {
+    return false
+  }
+
+  return RESTRICTED_PROJECT_FILE_PATTERNS.some((pattern) => pattern.test(fileName))
+}
+
+function resolveProjectFileTarget(projectId, inputPath, fallbackName = 'file') {
+  const projectDir = path.join(PROJECT_FILES_ROOT, String(projectId))
+  const relativePath = normalizeProjectRelativePath(inputPath, fallbackName)
+  const absolutePath = path.resolve(projectDir, relativePath)
+  const relativeToProjectDir = path.relative(projectDir, absolutePath)
+
+  if (relativeToProjectDir.startsWith('..') || path.isAbsolute(relativeToProjectDir)) {
+    throw new Error('validation:Invalid file path.')
+  }
+
+  return {
+    projectDir,
+    absolutePath,
+    relativePath: relativeToProjectDir.split(path.sep).join('/'),
+  }
+}
+
+function normalizeUploadedRelativePaths(rawPaths) {
+  if (Array.isArray(rawPaths)) {
+    return rawPaths.map((entry) => String(entry))
+  }
+
+  if (typeof rawPaths === 'string' && rawPaths.trim()) {
+    try {
+      const parsed = JSON.parse(rawPaths)
+      if (Array.isArray(parsed)) {
+        return parsed.map((entry) => String(entry))
+      }
+    } catch {
+      return []
+    }
+  }
+
+  return []
+}
+
+function isKnownTextFile(filePath) {
+  const baseName = path.basename(filePath).toLowerCase()
+  const extension = path.extname(baseName)
+  return TEXT_FILE_NAMES.has(baseName) || TEXT_FILE_EXTENSIONS.has(extension)
+}
+
+function isProjectReadmeFileName(fileName) {
+  return /^readme(?:\.[^.]+)?$/i.test(String(fileName ?? '').trim())
+}
+
+function rankProjectReadmeFileName(fileName) {
+  const normalized = String(fileName ?? '').trim().toLowerCase()
+  if (normalized === 'readme.md') {
+    return 0
+  }
+  if (normalized === 'readme') {
+    return 1
+  }
+  return 2
+}
+
+async function resolveProjectReadmeTarget(projectId) {
+  const defaultTarget = resolveProjectFileTarget(projectId, 'README.md', 'README.md')
+
+  try {
+    const dirents = await fs.promises.readdir(defaultTarget.projectDir, { withFileTypes: true })
+    const readmeEntry = dirents
+      .filter((dirent) => dirent.isFile() && isProjectReadmeFileName(dirent.name))
+      .sort((left, right) => {
+        const rankDifference = rankProjectReadmeFileName(left.name) - rankProjectReadmeFileName(right.name)
+        if (rankDifference !== 0) {
+          return rankDifference
+        }
+
+        return left.name.localeCompare(right.name, 'en', { numeric: true, sensitivity: 'base' })
+      })
+      .at(0)
+
+    if (!readmeEntry) {
+      return defaultTarget
+    }
+
+    return resolveProjectFileTarget(projectId, readmeEntry.name, readmeEntry.name)
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return defaultTarget
+    }
+
+    throw error
+  }
+}
+
+async function listProjectFiles(projectDir, currentDir = projectDir) {
+  let dirents
+  try {
+    dirents = await fs.promises.readdir(currentDir, { withFileTypes: true })
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return []
+    }
+    throw error
+  }
+
+  const nodes = await Promise.all(
+    dirents.map(async (dirent) => {
+      const absolutePath = path.join(currentDir, dirent.name)
+      const stats = await fs.promises.stat(absolutePath)
+      const relativePath = path.relative(projectDir, absolutePath).split(path.sep).join('/')
+
+      if (isRestrictedProjectFilePath(relativePath)) {
+        return null
+      }
+
+      if (dirent.isDirectory()) {
+        return {
+          name: dirent.name,
+          path: relativePath,
+          type: 'folder',
+          updatedAt: stats.mtime.toISOString(),
+          children: await listProjectFiles(projectDir, absolutePath),
+        }
+      }
+
+      return {
+        name: dirent.name,
+        path: relativePath,
+        type: 'file',
+        size: stats.size,
+        updatedAt: stats.mtime.toISOString(),
+      }
+    }),
+  )
+
+  return nodes.filter(Boolean).sort((left, right) => {
+    if (left.type !== right.type) {
+      return left.type === 'folder' ? -1 : 1
+    }
+
+    return left.name.localeCompare(right.name, 'ko-KR', { numeric: true, sensitivity: 'base' })
+  })
+}
+
+async function readProjectFilePreview(absolutePath, stats) {
+  const baseName = path.basename(absolutePath).toLowerCase()
+  const extension = path.extname(baseName)
+  const shouldInspectContents = isKnownTextFile(absolutePath) || extension.length === 0
+
+  if (!shouldInspectContents) {
+    return { isText: false, truncated: false, content: null }
+  }
+
+  const bytesToRead = Math.min(stats.size, MAX_TEXT_PREVIEW_BYTES)
+  const handle = await fs.promises.open(absolutePath, 'r')
+
+  try {
+    const buffer = Buffer.alloc(bytesToRead)
+    const { bytesRead } = await handle.read(buffer, 0, bytesToRead, 0)
+    const previewBuffer = buffer.subarray(0, bytesRead)
+
+    if (!isKnownTextFile(absolutePath) && previewBuffer.includes(0)) {
+      return { isText: false, truncated: false, content: null }
+    }
+
+    return {
+      isText: true,
+      truncated: stats.size > MAX_TEXT_PREVIEW_BYTES,
+      content: previewBuffer.toString('utf8'),
+    }
+  } finally {
+    await handle.close()
+  }
+}
+
+async function projectDirectoryHasFiles(projectDir) {
+  let dirents
+  try {
+    dirents = await fs.promises.readdir(projectDir, { withFileTypes: true })
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return false
+    }
+    throw error
+  }
+
+  for (const dirent of dirents) {
+    const absolutePath = path.join(projectDir, dirent.name)
+    if (dirent.isFile()) {
+      return true
+    }
+
+    if (dirent.isDirectory() && (await projectDirectoryHasFiles(absolutePath))) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function buildDefaultProjectReadme(project) {
+  const title = sanitizeString(String(project?.title ?? ''), 200, true) || 'Untitled Project'
+  const description = sanitizeString(String(project?.description ?? ''), 20000, true) || 'Project overview will be added here.'
+  const author = sanitizeString(String(project?.author ?? ''), 120, true) || 'Unknown'
+  const department = sanitizeString(String(project?.department ?? ''), 120, true) || 'Unknown'
+  const tags = Array.isArray(project?.tags) ? project.tags.map((tag) => sanitizeString(String(tag), 80, true)).filter(Boolean) : []
+  const tagSection = tags.length > 0 ? tags.map((tag) => `- ${tag}`).join('\n') : '- general'
+
+  return `# ${title}
+
+## Overview
+${description}
+
+## Ownership
+- Author: ${author}
+- Department: ${department}
+
+## Tags
+${tagSection}
+`
+}
+
+function sanitizeProjectReadmeContent(input, fallbackContent) {
+  const rawValue = typeof input === 'string' ? input : ''
+  const normalized = rawValue
+    .replace(/\r\n/g, '\n')
+    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
+    .slice(0, MAX_PROJECT_README_CHAR_COUNT)
+    .trim()
+
+  if (!normalized) {
+    return fallbackContent
+  }
+
+  return normalized
+}
+
+async function readProjectReadmeDocument(project) {
+  const target = await resolveProjectReadmeTarget(project?.id)
+
+  try {
+    const stats = await fs.promises.stat(target.absolutePath)
+    if (!stats.isFile()) {
+      throw new Error('validation:README is only available for files.')
+    }
+
+    const content = await fs.promises.readFile(target.absolutePath, 'utf8')
+    return {
+      name: path.basename(target.absolutePath),
+      path: target.relativePath,
+      content,
+      size: stats.size,
+      updatedAt: stats.mtime.toISOString(),
+      exists: true,
+      isGenerated: false,
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      throw error
+    }
+
+    const content = buildDefaultProjectReadme(project)
+    return {
+      name: 'README.md',
+      path: 'README.md',
+      content,
+      size: Buffer.byteLength(content, 'utf8'),
+      updatedAt: null,
+      exists: false,
+      isGenerated: true,
+    }
+  }
+}
+
+function sendProjectApiError(res, error, fallbackMessage) {
+  if (error?.message?.startsWith?.('validation:')) {
+    res.status(400).json({ error: error.message.slice('validation:'.length) })
+    return
+  }
+
+  console.error('[sqlite-api]', fallbackMessage, error)
+  res.status(500).json({ error: fallbackMessage })
 }
 
 function initDatabase() {
@@ -396,6 +915,186 @@ app.get('/api/v1/projects/:id', (req, res) => {
   db.prepare('UPDATE projects SET views = views + 1 WHERE id = ?').run(req.params.id)
 
   res.json(toProjectDto(project))
+})
+
+app.get('/api/v1/projects/:id/readme', async (req, res) => {
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id)
+  if (!project) {
+    return res.status(404).json({ error: 'Project not found.' })
+  }
+
+  try {
+    const readme = await readProjectReadmeDocument(toProjectDto(project))
+    res.json({ readme })
+  } catch (error) {
+    sendProjectApiError(res, error, 'Failed to fetch project README.')
+  }
+})
+
+app.put('/api/v1/projects/:id/readme', async (req, res) => {
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id)
+  if (!project) {
+    return res.status(404).json({ error: 'Project not found.' })
+  }
+
+  const projectDto = toProjectDto(project)
+  if (!hasProjectWriteAccess(req, projectDto)) {
+    return res.status(403).json({ error: 'Only the project author can update the README.' })
+  }
+
+  try {
+    const currentReadme = await readProjectReadmeDocument(projectDto)
+    const target = resolveProjectFileTarget(project.id, currentReadme.path, currentReadme.name)
+    const nextContent = sanitizeProjectReadmeContent(req.body?.content, buildDefaultProjectReadme(projectDto))
+
+    await fs.promises.mkdir(target.projectDir, { recursive: true })
+    await fs.promises.writeFile(target.absolutePath, nextContent, 'utf8')
+
+    const readme = await readProjectReadmeDocument(projectDto)
+    res.json({ readme })
+  } catch (error) {
+    sendProjectApiError(res, error, 'Failed to save project README.')
+  }
+})
+
+app.get('/api/v1/projects/:id/files', async (req, res) => {
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id)
+  if (!project) {
+    return res.status(404).json({ error: 'Project not found.' })
+  }
+
+  try {
+    const files = await listProjectFiles(path.join(PROJECT_FILES_ROOT, String(project.id)))
+    res.json({ files })
+  } catch (error) {
+    sendProjectApiError(res, error, 'Failed to fetch project files.')
+  }
+})
+
+app.post('/api/v1/projects/:id/files', async (req, res) => {
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id)
+  if (!project) {
+    return res.status(404).json({ error: 'Project not found.' })
+  }
+
+  const projectDto = toProjectDto(project)
+  if (!hasProjectWriteAccess(req, projectDto)) {
+    return res.status(403).json({ error: 'Only the project author can upload files.' })
+  }
+
+  if (!req.files || !req.files.files) {
+    return res.status(400).json({ error: 'At least one file is required.' })
+  }
+
+  try {
+    const uploadedFiles = Array.isArray(req.files.files) ? req.files.files : [req.files.files]
+    const relativePaths = normalizeUploadedRelativePaths(req.body?.relativePaths)
+    const uploaded = []
+
+    for (const [index, uploadedFile] of uploadedFiles.entries()) {
+      const fallbackName = sanitizeProjectPathSegment(uploadedFile.name, `upload-${index + 1}`)
+      const target = resolveProjectFileTarget(project.id, relativePaths[index] ?? fallbackName, fallbackName)
+      if (isRestrictedProjectFilePath(target.relativePath)) {
+        throw new Error('validation:Sensitive files and secrets cannot be uploaded to projects.')
+      }
+
+      await fs.promises.mkdir(path.dirname(target.absolutePath), { recursive: true })
+      await uploadedFile.mv(target.absolutePath)
+
+      const stats = await fs.promises.stat(target.absolutePath)
+      uploaded.push({
+        name: path.basename(target.absolutePath),
+        path: target.relativePath,
+        size: stats.size,
+        updatedAt: stats.mtime.toISOString(),
+      })
+    }
+
+    const files = await listProjectFiles(path.join(PROJECT_FILES_ROOT, String(project.id)))
+    res.status(201).json({ uploaded, files })
+  } catch (error) {
+    sendProjectApiError(res, error, 'Failed to upload project files.')
+  }
+})
+
+app.get('/api/v1/projects/:id/files/content', async (req, res) => {
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id)
+  if (!project) {
+    return res.status(404).json({ error: 'Project not found.' })
+  }
+
+  const requestedPath = typeof req.query.path === 'string' ? req.query.path : ''
+  if (!requestedPath.trim()) {
+    return res.status(400).json({ error: 'File path is required.' })
+  }
+
+  try {
+    const target = resolveProjectFileTarget(project.id, requestedPath)
+    if (isRestrictedProjectFilePath(target.relativePath)) {
+      return res.status(403).json({ error: 'Access to this file is restricted.' })
+    }
+
+    const stats = await fs.promises.stat(target.absolutePath)
+    if (!stats.isFile()) {
+      return res.status(400).json({ error: 'Preview is only available for files.' })
+    }
+
+    const preview = await readProjectFilePreview(target.absolutePath, stats)
+    res.json({
+      file: {
+        name: path.basename(target.absolutePath),
+        path: target.relativePath,
+        size: stats.size,
+        updatedAt: stats.mtime.toISOString(),
+        isText: preview.isText,
+        truncated: preview.truncated,
+        content: preview.content,
+      },
+    })
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return res.status(404).json({ error: 'File not found.' })
+    }
+
+    sendProjectApiError(res, error, 'Failed to read project file.')
+  }
+})
+
+app.get('/api/v1/projects/:id/files/download', async (req, res) => {
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id)
+  if (!project) {
+    return res.status(404).json({ error: 'Project not found.' })
+  }
+
+  const requestedPath = typeof req.query.path === 'string' ? req.query.path : ''
+  if (!requestedPath.trim()) {
+    return res.status(400).json({ error: 'File path is required.' })
+  }
+
+  try {
+    const target = resolveProjectFileTarget(project.id, requestedPath)
+    if (isRestrictedProjectFilePath(target.relativePath)) {
+      return res.status(403).json({ error: 'Access to this file is restricted.' })
+    }
+
+    const stats = await fs.promises.stat(target.absolutePath)
+    if (!stats.isFile()) {
+      return res.status(400).json({ error: 'Only files can be downloaded.' })
+    }
+
+    const downloadName = path.basename(target.absolutePath)
+    res.setHeader('Content-Disposition', buildAttachmentContentDisposition(downloadName))
+    res.setHeader('Content-Length', String(stats.size))
+    res.setHeader('Cache-Control', 'no-store')
+    res.type(downloadName)
+    res.sendFile(target.absolutePath)
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return res.status(404).json({ error: 'File not found.' })
+    }
+
+    sendProjectApiError(res, error, 'Failed to download project file.')
+  }
 })
 
 // 프로젝트 생성
