@@ -813,6 +813,9 @@ function dockerfileNeedsLocalContext(dockerfileContents) {
   return /^\s*(COPY|ADD)\s+/im.test(dockerfileContents)
 }
 
+const MISSING_COMPOSE_BUILD_CONTEXT_MESSAGE =
+  'This compose definition does not include build context files. Upload a tar archive with your app files before building.'
+
 async function listContainerDefinitionFiles(definitionDir) {
   const items = []
 
@@ -836,6 +839,51 @@ async function listContainerDefinitionFiles(definitionDir) {
 
   await visit(definitionDir)
   return items
+}
+
+function countMeaningfulBuildContextFiles(
+  files,
+  { dockerfilePath, composeFileName, metadataFileName, envFileName, nginxConfigFileName } = {},
+) {
+  const ignoredPaths = new Set(
+    [dockerfilePath, composeFileName, metadataFileName, envFileName, nginxConfigFileName]
+      .filter(Boolean)
+      .map((value) => String(value).replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase()),
+  )
+
+  return files.filter((relativePath) => {
+    const normalizedPath = String(relativePath ?? '').replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase()
+    const fileName = path.posix.basename(normalizedPath)
+
+    if (!normalizedPath || ignoredPaths.has(normalizedPath)) {
+      return false
+    }
+
+    if (fileName === '.dockerignore' || /^\.env(?:\..+)?$/i.test(fileName) || fileName === 'nginx.conf') {
+      return false
+    }
+
+    return true
+  }).length
+}
+
+function composeDefinitionNeedsBuildContextArchive(
+  files,
+  { composeFileName, dockerfileContents, dockerfilePath, metadataFileName, envFileName, nginxConfigFileName } = {},
+) {
+  if (!composeFileName || !dockerfileNeedsLocalContext(dockerfileContents)) {
+    return false
+  }
+
+  return (
+    countMeaningfulBuildContextFiles(files, {
+      dockerfilePath,
+      composeFileName,
+      metadataFileName,
+      envFileName,
+      nginxConfigFileName,
+    }) === 0
+  )
 }
 
 function serializeBuildJob(row) {
@@ -1194,6 +1242,17 @@ async function scanProjectContainerDefinitions(projectId, db) {
       const fileName = path.posix.basename(relativePath).toLowerCase()
       return fileName !== '.dockerignore' && !/^\.env(?:\..+)?$/i.test(fileName)
     }).length
+    const missingComposeBuildContext = composeDefinitionNeedsBuildContextArchive(files, {
+      composeFileName,
+      dockerfileContents,
+      dockerfilePath,
+      metadataFileName: metadata.fileName,
+      envFileName,
+      nginxConfigFileName,
+    })
+    if (missingComposeBuildContext) {
+      warnings.push(MISSING_COMPOSE_BUILD_CONTEXT_MESSAGE)
+    }
     if (!composeFileName && contextHeuristicFileCount <= 2 && dockerfileNeedsLocalContext(dockerfileContents)) {
       warnings.push('This Dockerfile uses COPY or ADD. Upload the matching context files before building.')
     }
@@ -3056,7 +3115,32 @@ export function attachProjectContainerRoutes(app, { db, jwt, jwtSecret }) {
         return res.status(404).json({ error: 'Container definition not found.' })
       }
 
+      const metadata = await readContainerMetadata(definitionDir)
+      const metadataBuild = metadata.data?.build ?? {}
+      const composeFileName = findComposeFileName(definitionDir)
+      const envFileName = findEnvironmentFileName(definitionDir)
+      const nginxConfigFileName = findNginxConfigFileName(definitionDir)
       const detectedDockerfileName = findDockerfileName(definitionDir)
+      const dockerfilePath = normalizeProjectRelativePath(
+        metadataBuild.dockerfile ?? detectedDockerfileName ?? 'Dockerfile',
+        'Dockerfile',
+      )
+      const dockerfileAbsolutePath = path.join(definitionDir, dockerfilePath)
+      const dockerfileContents = pathExists(dockerfileAbsolutePath) ? await readTextFileIfExists(dockerfileAbsolutePath) : null
+      const files = await listContainerDefinitionFiles(definitionDir)
+
+      if (
+        composeDefinitionNeedsBuildContextArchive(files, {
+          composeFileName,
+          dockerfileContents,
+          dockerfilePath,
+          metadataFileName: metadata.fileName,
+          envFileName,
+          nginxConfigFileName,
+        })
+      ) {
+        return res.status(400).json({ error: MISSING_COMPOSE_BUILD_CONTEXT_MESSAGE })
+      }
 
       const result = db.prepare(
         `INSERT INTO docker_build_jobs (

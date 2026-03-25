@@ -33,6 +33,8 @@ interface ProjectDockerTabProps {
 }
 
 const MAIN_COMPOSE_DEFINITION_NAME = 'main'
+const MISSING_COMPOSE_BUILD_CONTEXT_MESSAGE =
+  'This compose definition does not include build context files. Upload a tar archive with your app files before building.'
 
 function formatDateTime(value?: string | null) {
   if (!value) {
@@ -193,6 +195,9 @@ function formatDockerMessage(message?: string | null) {
   if (trimmed === 'This Dockerfile uses COPY or ADD. Upload the matching context files before building.') {
     return '이 Dockerfile은 COPY 또는 ADD를 사용합니다. 빌드 전에 관련 컨텍스트 파일을 함께 업로드해 주세요.'
   }
+  if (trimmed === MISSING_COMPOSE_BUILD_CONTEXT_MESSAGE) {
+    return '현재 compose 정의에는 앱 소스 컨텍스트가 없습니다. 컨텍스트 tar를 함께 업로드한 뒤 빌드를 시작해 주세요.'
+  }
   if (trimmed === 'Only the project author can manage containers.') {
     return '프로젝트 작성자만 컨테이너를 관리할 수 있습니다.'
   }
@@ -231,6 +236,10 @@ function formatDockerMessage(message?: string | null) {
   }
 
   return trimmed
+}
+
+function definitionNeedsComposeBuildContext(definition?: ProjectContainerDefinition | null) {
+  return Boolean(definition?.warnings?.includes(MISSING_COMPOSE_BUILD_CONTEXT_MESSAGE))
 }
 
 function formatPortMappingLabel(containerPort?: number | null, hostPort?: number | null) {
@@ -302,7 +311,7 @@ export function ProjectDockerTab({
   const dockerComposeUploadLabel = hasContextTar ? '컨텍스트 업로드 후 바로 빌드' : '정의 갱신 후 바로 빌드'
   const dockerComposeUploadHint = hasContextTar
     ? '선택한 tar로 기존 빌드 컨텍스트를 교체한 뒤 바로 빌드를 시작합니다.'
-    : 'tar를 비워두면 기존 빌드 컨텍스트를 유지하고 Dockerfile과 compose 정의만 교체합니다.'
+    : 'tar를 비워두면 기존 빌드 컨텍스트를 유지하고 Dockerfile과 compose 정의만 교체합니다. 컨텍스트가 비어 있으면 자동 빌드를 시작하지 않습니다.'
   const dockerComposeSupportFileHint = hasSupplementalConfigFiles
     ? '선택한 env 파일은 .env로, nginx 설정 파일은 nginx.conf로 저장되어 compose와 Dockerfile에서 바로 참조할 수 있습니다.'
     : 'env 파일이나 nginx.conf가 있으면 함께 올릴 수 있고, 업로드하면 compose 옆에 저장됩니다.'
@@ -433,7 +442,7 @@ export function ProjectDockerTab({
     const willUploadSupplementalFiles = Boolean(envFile || nginxConfigFile)
 
     try {
-      await uploadProjectDockerComposeFiles(
+      const uploadPayload = await uploadProjectDockerComposeFiles(
         projectId,
         dockerfile,
         composeFile,
@@ -446,6 +455,20 @@ export function ProjectDockerTab({
         envFile,
         nginxConfigFile,
       )
+
+      const uploadedDefinition =
+        uploadPayload.definitions?.find((definition) => definition.name === MAIN_COMPOSE_DEFINITION_NAME) ?? null
+
+      if (definitionNeedsComposeBuildContext(uploadedDefinition)) {
+        setDockerfile(null)
+        setComposeFile(null)
+        setEnvFile(null)
+        setNginxConfigFile(null)
+        setContextTar(null)
+        warning('정의 파일은 업로드했지만 앱 소스 컨텍스트가 없어 자동 빌드는 시작하지 않았습니다. 컨텍스트 tar를 함께 올려주세요.')
+        await loadOverview({ keepSelectedJob: false })
+        return
+      }
 
       const payload = await startProjectContainerBuild(
         projectId,
@@ -493,6 +516,11 @@ export function ProjectDockerTab({
 
   async function handleBuild(definition: ProjectContainerDefinition) {
     if (!projectId) {
+      return
+    }
+
+    if (definitionNeedsComposeBuildContext(definition)) {
+      warning('현재 compose 정의에는 앱 소스 컨텍스트가 없습니다. 컨텍스트 tar를 함께 업로드한 뒤 다시 빌드해 주세요.')
       return
     }
 
@@ -564,6 +592,9 @@ export function ProjectDockerTab({
     deployment?.sitePreviewUrl ??
     deployment?.endpointUrl ??
     undefined
+  const visibleDefinitionNeedsContextArchive = definitionNeedsComposeBuildContext(visibleDefinition)
+  const latestBuildErrorMessage =
+    visibleDefinition?.lastBuildJob?.status === 'failed' ? formatDockerMessage(visibleDefinition.lastBuildJob.errorMessage) : ''
 
   if (!projectId) {
     return (
@@ -834,6 +865,12 @@ export function ProjectDockerTab({
                 </div>
               ) : null}
 
+              {visibleDefinitionNeedsContextArchive ? (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  앱 소스 컨텍스트가 비어 있습니다. `컨텍스트 tar`를 함께 업로드해야 자동 빌드와 수동 빌드를 시작할 수 있습니다.
+                </div>
+              ) : null}
+
               {visibleDefinition.uploadSources.length ? (
                 <details className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
                   <summary className="cursor-pointer list-none font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
@@ -876,6 +913,13 @@ export function ProjectDockerTab({
                   {formatDockerMessage(deployment.errorMessage)}
                 </div>
               ) : null}
+
+              {latestBuildErrorMessage ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                  <p className="font-semibold">최근 빌드 실패 사유</p>
+                  <p className="mt-1">{latestBuildErrorMessage}</p>
+                </div>
+              ) : null}
             </div>
 
             <div className="grid gap-3 xl:min-w-[360px]">
@@ -887,7 +931,7 @@ export function ProjectDockerTab({
                 <OpalButton
                   size="sm"
                   variant="primary"
-                  disabled={!canManage || !currentUserName.trim() || !runtimeStatus?.available}
+                  disabled={!canManage || !currentUserName.trim() || !runtimeStatus?.available || visibleDefinitionNeedsContextArchive}
                   icon={<Play className="h-4 w-4" />}
                   onClick={() => void handleBuild(visibleDefinition)}
                 >
