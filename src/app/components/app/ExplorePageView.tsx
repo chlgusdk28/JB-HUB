@@ -110,6 +110,7 @@ function ExplorePageViewBase({
   return (
     <PageShell density={shellDensity === 'compact' ? 'compact' : 'default'}>
       <PageHeader
+        variant="simple"
         eyebrow="Project Explorer"
         title={exploreTitle}
         description={exploreDescription}

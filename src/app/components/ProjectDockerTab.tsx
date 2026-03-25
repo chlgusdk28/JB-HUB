@@ -617,12 +617,11 @@ export function ProjectDockerTab({
 
           <div className="hidden min-w-[360px] flex-col gap-3 md:flex">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              업로드 대상은 항상 <span className="font-semibold text-slate-900">main</span> 입니다. Dockerfile과 compose만 올리면 기존
-              컨텍스트를 유지하고 정의 파일만 교체합니다. env 파일과 nginx.conf를 함께 올리면 compose 옆의 루트 설정 파일을 갱신하고,
-              tar까지 함께 올리면 컨텍스트도 새로 교체한 뒤 바로 빌드를 시작합니다.
+              업로드 대상은 항상 <span className="font-semibold text-slate-900">main</span> 입니다. 기본 파일 두 개만 먼저 올리고, 나머지
+              보조 파일은 필요할 때만 추가할 수 있게 정리했습니다.
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-2">
               <label
                 className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
                   canManage
@@ -666,112 +665,109 @@ export function ProjectDockerTab({
                   {composeFile?.name ?? 'docker-compose.yml 또는 compose.yml'}
                 </span>
               </label>
-              <label
-                className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
-                  canManage
-                    ? 'cursor-pointer border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400'
-                    : 'border-slate-200 bg-slate-100 text-slate-400'
-                }`}
-              >
-                <input
-                  type="file"
-                  accept=".env,text/plain"
-                  className="sr-only"
-                  disabled={!canManage || isUploading}
-                  onChange={(event) => setEnvFile(event.target.files?.[0] ?? null)}
-                />
-                <span className="flex items-center gap-2 font-medium">
-                  <FileCode2 className="h-4 w-4" />
-                  env 파일 선택
-                </span>
-                <span className="mt-1 block text-xs text-slate-500">{envFile?.name ?? '선택 안 함: 기존 env 유지'}</span>
-              </label>
-              <label
-                className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
-                  canManage
-                    ? 'cursor-pointer border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400'
-                    : 'border-slate-200 bg-slate-100 text-slate-400'
-                }`}
-              >
-                <input
-                  type="file"
-                  accept=".conf,text/plain"
-                  className="sr-only"
-                  disabled={!canManage || isUploading}
-                  onChange={(event) => setNginxConfigFile(event.target.files?.[0] ?? null)}
-                />
-                <span className="flex items-center gap-2 font-medium">
-                  <FileCode2 className="h-4 w-4" />
-                  nginx.conf 선택
-                </span>
-                <span className="mt-1 block text-xs text-slate-500">
-                  {nginxConfigFile?.name ?? '선택 안 함: 기존 nginx.conf 유지'}
-                </span>
-              </label>
-              <label
-                className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
-                  canManage
-                    ? 'cursor-pointer border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400'
-                    : 'border-slate-200 bg-slate-100 text-slate-400'
-                }`}
-              >
-                <input
-                  type="file"
-                  accept=".tar,application/x-tar,application/tar"
-                  className="sr-only"
-                  disabled={!canManage || isUploading}
-                  onChange={(event) => setContextTar(event.target.files?.[0] ?? null)}
-                />
-                <span className="flex items-center gap-2 font-medium">
-                  <Package className="h-4 w-4" />
-                  컨텍스트 tar 선택
-                </span>
-                <span className="mt-1 block text-xs text-slate-500">
-                  {contextTar?.name ?? '선택 안 함: 기존 컨텍스트 유지'}
-                </span>
-              </label>
             </div>
 
-            <div className="flex flex-col items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-1">
-                <p className="text-xs leading-5 text-slate-600">{dockerComposeUploadHint}</p>
-                <p className="text-xs leading-5 text-slate-500">{dockerComposeSupportFileHint}</p>
+            <details className="rounded-2xl border border-slate-200 bg-slate-50/85 px-4 py-3 text-sm text-slate-700">
+              <summary className="cursor-pointer list-none font-medium [&::-webkit-details-marker]:hidden">고급 업로드 옵션</summary>
+              <div className="mt-3 space-y-3">
+                <p className="text-xs leading-5 text-slate-600">{dockerComposeSupportFileHint}</p>
+                <div className="grid gap-3 xl:grid-cols-3">
+                  <label
+                    className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
+                      canManage
+                        ? 'cursor-pointer border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                        : 'border-slate-200 bg-slate-100 text-slate-400'
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      accept=".env,text/plain"
+                      className="sr-only"
+                      disabled={!canManage || isUploading}
+                      onChange={(event) => setEnvFile(event.target.files?.[0] ?? null)}
+                    />
+                    <span className="flex items-center gap-2 font-medium">
+                      <FileCode2 className="h-4 w-4" />
+                      env 파일
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">{envFile?.name ?? '기존 env 유지'}</span>
+                  </label>
+                  <label
+                    className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
+                      canManage
+                        ? 'cursor-pointer border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                        : 'border-slate-200 bg-slate-100 text-slate-400'
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      accept=".conf,text/plain"
+                      className="sr-only"
+                      disabled={!canManage || isUploading}
+                      onChange={(event) => setNginxConfigFile(event.target.files?.[0] ?? null)}
+                    />
+                    <span className="flex items-center gap-2 font-medium">
+                      <FileCode2 className="h-4 w-4" />
+                      nginx.conf
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">{nginxConfigFile?.name ?? '기존 nginx 유지'}</span>
+                  </label>
+                  <label
+                    className={`rounded-2xl border border-dashed px-4 py-4 text-sm ${
+                      canManage
+                        ? 'cursor-pointer border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                        : 'border-slate-200 bg-slate-100 text-slate-400'
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      accept=".tar,application/x-tar,application/tar"
+                      className="sr-only"
+                      disabled={!canManage || isUploading}
+                      onChange={(event) => setContextTar(event.target.files?.[0] ?? null)}
+                    />
+                    <span className="flex items-center gap-2 font-medium">
+                      <Package className="h-4 w-4" />
+                      컨텍스트 tar
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">{contextTar?.name ?? '기존 컨텍스트 유지'}</span>
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {envFile ? (
+                    <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setEnvFile(null)}>
+                      env 해제
+                    </OpalButton>
+                  ) : null}
+                  {nginxConfigFile ? (
+                    <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setNginxConfigFile(null)}>
+                      nginx 해제
+                    </OpalButton>
+                  ) : null}
+                  {contextTar ? (
+                    <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setContextTar(null)}>
+                      컨텍스트 해제
+                    </OpalButton>
+                  ) : null}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {envFile ? (
-                  <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setEnvFile(null)}>
-                    env 해제
-                  </OpalButton>
-                ) : null}
-                {nginxConfigFile ? (
-                  <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setNginxConfigFile(null)}>
-                    nginx 해제
-                  </OpalButton>
-                ) : null}
-                {contextTar ? (
-                  <OpalButton variant="ghost" size="sm" disabled={isUploading} onClick={() => setContextTar(null)}>
-                    컨텍스트 해제
-                  </OpalButton>
-                ) : null}
-              </div>
-            </div>
+            </details>
 
             {isUploading ? <Progress value={uploadProgress} /> : null}
 
-            <OpalButton
-              variant="primary"
-              size="sm"
-              icon={isUploading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              disabled={!canManage || isUploading || !dockerfile || !composeFile}
-              onClick={() => void handleDockerComposeUpload()}
-            >
-              {dockerComposeUploadLabel}
-            </OpalButton>
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <OpalButton
+                variant="primary"
+                size="sm"
+                icon={isUploading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                disabled={!canManage || isUploading || !dockerfile || !composeFile}
+                onClick={() => void handleDockerComposeUpload()}
+              >
+                {dockerComposeUploadLabel}
+              </OpalButton>
 
-            <p className="text-xs leading-5 text-slate-500">
-              compose의 `ports` 또는 `expose`, 없으면 Dockerfile의 `EXPOSE`를 기준으로 사이트 미리보기를 연결합니다. Dockerfile이 `COPY`나
-              `ADD`를 쓰거나 compose가 다른 하위 경로를 빌드하면 tar 컨텍스트를 함께 올려 주세요.
-            </p>
+              <p className="text-xs leading-5 text-slate-500">{dockerComposeUploadHint}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -839,35 +835,40 @@ export function ProjectDockerTab({
               ) : null}
 
               {visibleDefinition.uploadSources.length ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-900">
-                      {visibleDefinition.uploadRecordedAt ? '업로드 원본' : '포함 파일'}
-                    </span>
-                    {visibleDefinition.uploadRecordedAt ? (
-                      <span className="text-slate-500">{formatDateTime(visibleDefinition.uploadRecordedAt)} 기준</span>
-                    ) : null}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {visibleUploadSources.map((uploadSource) => (
-                      <span
-                        key={`${uploadSource.kind}-${uploadSource.relativePath ?? uploadSource.fileName}`}
-                        className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700"
-                      >
-                        {`${formatUploadSourceKind(uploadSource.kind)} ${formatUploadSourceName(
-                          uploadSource.kind,
-                          uploadSource.fileName,
-                          uploadSource.relativePath,
-                        )}`}
+                <details className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  <summary className="cursor-pointer list-none font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+                    {visibleDefinition.uploadRecordedAt ? '업로드 원본 보기' : '포함 파일 보기'}
+                  </summary>
+                  <div className="mt-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-slate-900">
+                        {visibleDefinition.uploadRecordedAt ? '업로드 원본' : '포함 파일'}
                       </span>
-                    ))}
-                    {hiddenUploadSourceCount > 0 ? (
-                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">
-                        + {hiddenUploadSourceCount}개
-                      </span>
-                    ) : null}
+                      {visibleDefinition.uploadRecordedAt ? (
+                        <span className="text-slate-500">{formatDateTime(visibleDefinition.uploadRecordedAt)} 기준</span>
+                      ) : null}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {visibleUploadSources.map((uploadSource) => (
+                        <span
+                          key={`${uploadSource.kind}-${uploadSource.relativePath ?? uploadSource.fileName}`}
+                          className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700"
+                        >
+                          {`${formatUploadSourceKind(uploadSource.kind)} ${formatUploadSourceName(
+                            uploadSource.kind,
+                            uploadSource.fileName,
+                            uploadSource.relativePath,
+                          )}`}
+                        </span>
+                      ))}
+                      {hiddenUploadSourceCount > 0 ? (
+                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">
+                          + {hiddenUploadSourceCount}개
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                </details>
               ) : null}
 
               {deployment?.errorMessage ? (
@@ -878,8 +879,8 @@ export function ProjectDockerTab({
             </div>
 
             <div className="grid gap-3 xl:min-w-[360px]">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                Dockerfile과 compose 파일을 다시 올리지 않아도 여기서 재빌드, 재시작, 중지, 로그 확인을 할 수 있습니다.
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                실행 확인과 로그 점검만 먼저 보이도록 정리했습니다. 세부 제어는 아래에서 필요할 때만 열 수 있습니다.
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -892,121 +893,138 @@ export function ProjectDockerTab({
                 >
                   다시 빌드
                 </OpalButton>
-
-                {deployment ? (
+                {previewFrameUrl ? (
                   <OpalButton
                     size="sm"
                     variant="secondary"
-                    icon={<Square className="h-4 w-4" />}
-                    onClick={() => void handleDeploymentAction(deployment, 'stop')}
-                  >
-                    중지
-                  </OpalButton>
-                ) : null}
-
-                {deployment ? (
-                  <OpalButton
-                    size="sm"
-                    variant="secondary"
-                    icon={<RotateCcw className="h-4 w-4" />}
-                    onClick={() => void handleDeploymentAction(deployment, 'restart')}
-                  >
-                    다시 시작
-                  </OpalButton>
-                ) : null}
-
-                {visibleDefinition.lastBuildJob ? (
-                  <OpalButton
-                    size="sm"
-                    variant="ghost"
-                    icon={<TerminalSquare className="h-4 w-4" />}
-                    onClick={() => setSelectedJobId(visibleDefinition.lastBuildJob?.id ?? null)}
-                  >
-                    로그 보기
-                  </OpalButton>
-                ) : null}
-
-                {deploymentServiceEndpoints.length > 0
-                  ? deploymentServiceEndpoints.map((serviceEndpoint) => (
-                      <OpalButton
-                        key={`${serviceEndpoint.serviceName ?? 'service'}-${serviceEndpoint.hostPort ?? 'port'}-direct`}
-                        size="sm"
-                        variant="ghost"
-                        icon={<ExternalLink className="h-4 w-4" />}
-                        onClick={() =>
-                          window.open(
-                            serviceEndpoint.sitePreviewUrl ?? serviceEndpoint.endpointUrl ?? undefined,
-                            '_blank',
-                            'noopener,noreferrer',
-                          )
-                        }
-                      >
-                        {`${getServiceEndpointLabel(deployment, serviceEndpoint.serviceName)} 열기`}
-                      </OpalButton>
-                    ))
-                  : null}
-
-                {deploymentServiceEndpoints.length === 0 && deployment?.endpointUrl ? (
-                  <OpalButton
-                    size="sm"
-                    variant="ghost"
                     icon={<ExternalLink className="h-4 w-4" />}
-                    onClick={() => window.open(deployment.endpointUrl ?? undefined, '_blank', 'noopener,noreferrer')}
+                    onClick={() => window.open(previewFrameUrl, '_blank', 'noopener,noreferrer')}
                   >
-                    로컬 열기
-                  </OpalButton>
-                ) : null}
-
-                {deploymentServiceEndpoints.length === 0 && deployment?.sitePreviewUrl ? (
-                  <OpalButton
-                    size="sm"
-                    variant="ghost"
-                    icon={<ExternalLink className="h-4 w-4" />}
-                    onClick={() => window.open(deployment.sitePreviewUrl ?? undefined, '_blank', 'noopener,noreferrer')}
-                  >
-                    사이트 미리보기
+                    미리보기 열기
                   </OpalButton>
                 ) : null}
               </div>
+
+              {(deployment || visibleDefinition.lastBuildJob || deploymentServiceEndpoints.length > 0) ? (
+                <details className="rounded-2xl border border-slate-200 bg-slate-50/85 px-4 py-3 text-sm text-slate-700">
+                  <summary className="cursor-pointer list-none font-medium [&::-webkit-details-marker]:hidden">실행 제어 열기</summary>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {deployment ? (
+                      <OpalButton
+                        size="sm"
+                        variant="secondary"
+                        icon={<Square className="h-4 w-4" />}
+                        onClick={() => void handleDeploymentAction(deployment, 'stop')}
+                      >
+                        중지
+                      </OpalButton>
+                    ) : null}
+
+                    {deployment ? (
+                      <OpalButton
+                        size="sm"
+                        variant="secondary"
+                        icon={<RotateCcw className="h-4 w-4" />}
+                        onClick={() => void handleDeploymentAction(deployment, 'restart')}
+                      >
+                        다시 시작
+                      </OpalButton>
+                    ) : null}
+
+                    {visibleDefinition.lastBuildJob ? (
+                      <OpalButton
+                        size="sm"
+                        variant="ghost"
+                        icon={<TerminalSquare className="h-4 w-4" />}
+                        onClick={() => setSelectedJobId(visibleDefinition.lastBuildJob?.id ?? null)}
+                      >
+                        로그 보기
+                      </OpalButton>
+                    ) : null}
+
+                    {deploymentServiceEndpoints.length > 0
+                      ? deploymentServiceEndpoints.map((serviceEndpoint) => (
+                          <OpalButton
+                            key={`${serviceEndpoint.serviceName ?? 'service'}-${serviceEndpoint.hostPort ?? 'port'}-direct`}
+                            size="sm"
+                            variant="ghost"
+                            icon={<ExternalLink className="h-4 w-4" />}
+                            onClick={() =>
+                              window.open(
+                                serviceEndpoint.sitePreviewUrl ?? serviceEndpoint.endpointUrl ?? undefined,
+                                '_blank',
+                                'noopener,noreferrer',
+                              )
+                            }
+                          >
+                            {`${getServiceEndpointLabel(deployment, serviceEndpoint.serviceName)} 열기`}
+                          </OpalButton>
+                        ))
+                      : null}
+
+                    {deploymentServiceEndpoints.length === 0 && deployment?.endpointUrl ? (
+                      <OpalButton
+                        size="sm"
+                        variant="ghost"
+                        icon={<ExternalLink className="h-4 w-4" />}
+                        onClick={() => window.open(deployment.endpointUrl ?? undefined, '_blank', 'noopener,noreferrer')}
+                      >
+                        로컬 열기
+                      </OpalButton>
+                    ) : null}
+
+                    {deploymentServiceEndpoints.length === 0 && deployment?.sitePreviewUrl ? (
+                      <OpalButton
+                        size="sm"
+                        variant="ghost"
+                        icon={<ExternalLink className="h-4 w-4" />}
+                        onClick={() => window.open(deployment.sitePreviewUrl ?? undefined, '_blank', 'noopener,noreferrer')}
+                      >
+                        사이트 미리보기
+                      </OpalButton>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
             </div>
           </div>
 
           {previewFrameUrl ? (
             <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-              <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
                 <span>업데이트 {formatDateTime(deployment.updatedAt)}</span>
-                {deploymentServiceEndpoints.length > 0
-                  ? deploymentServiceEndpoints.map((serviceEndpoint) => (
-                      <span key={`${serviceEndpoint.serviceName ?? 'service'}-${serviceEndpoint.hostPort ?? 'port'}-meta`}>
-                        {`${getServiceEndpointLabel(deployment, serviceEndpoint.serviceName)} ${serviceEndpoint.endpointUrl ?? serviceEndpoint.sitePreviewUrl ?? '-'}`}
-                      </span>
-                    ))
-                  : null}
-                {deploymentServiceEndpoints.length === 0 && deployment.endpointUrl ? <span>{deployment.endpointUrl}</span> : null}
-                {deploymentServiceEndpoints.length === 0 && deployment.sitePreviewUrl ? <span>{deployment.sitePreviewUrl}</span> : null}
+                <details className="rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-600">
+                  <summary className="cursor-pointer list-none font-medium text-slate-700 [&::-webkit-details-marker]:hidden">
+                    미리보기 주소
+                  </summary>
+                  <div className="mt-2 break-all text-[11px] text-slate-500">{previewFrameUrl}</div>
+                </details>
               </div>
               {deploymentServiceEndpoints.length > 0 ? (
-                <div className="grid gap-2 md:grid-cols-2">
-                  {deploymentServiceEndpoints.map((serviceEndpoint) => (
-                    <div
-                      key={`${serviceEndpoint.serviceName ?? 'service'}-${serviceEndpoint.hostPort ?? 'port'}-card`}
-                      className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-3 text-sm text-slate-600"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-slate-900">
-                          {getServiceEndpointLabel(deployment, serviceEndpoint.serviceName)}
-                        </span>
-                        {serviceEndpoint.isPrimary ? <Pill variant="subtle">기본</Pill> : null}
+                <details className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-3 text-sm text-slate-700">
+                  <summary className="cursor-pointer list-none font-medium [&::-webkit-details-marker]:hidden">서비스 엔드포인트 보기</summary>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    {deploymentServiceEndpoints.map((serviceEndpoint) => (
+                      <div
+                        key={`${serviceEndpoint.serviceName ?? 'service'}-${serviceEndpoint.hostPort ?? 'port'}-card`}
+                        className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-600"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900">
+                            {getServiceEndpointLabel(deployment, serviceEndpoint.serviceName)}
+                          </span>
+                          {serviceEndpoint.isPrimary ? <Pill variant="subtle">기본</Pill> : null}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {serviceEndpoint.endpointUrl ?? serviceEndpoint.sitePreviewUrl ?? '-'}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {formatPortMappingLabel(serviceEndpoint.containerPort, serviceEndpoint.hostPort)}
+                        </p>
                       </div>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {serviceEndpoint.endpointUrl ?? serviceEndpoint.sitePreviewUrl ?? '-'}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {formatPortMappingLabel(serviceEndpoint.containerPort, serviceEndpoint.hostPort)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </details>
               ) : null}
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <iframe
@@ -1026,27 +1044,31 @@ export function ProjectDockerTab({
         </div>
       )}
 
-      <div className="rounded-3xl border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_20px_40px_rgba(15,23,42,0.18)]">
-        <div className="mb-3 flex items-center justify-between gap-3">
+      <details className="rounded-3xl border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_20px_40px_rgba(15,23,42,0.18)]">
+        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-slate-400">빌드 로그</p>
             <h4 className="text-lg font-semibold">
               {selectedJob ? `${selectedJob.definitionName} - ${formatStatusLabel(selectedJob.status)}` : '선택된 작업 없음'}
             </h4>
           </div>
-          <OpalButton
-            size="sm"
-            variant="secondary"
-            icon={<RefreshCcw className={`h-4 w-4 ${isLogLoading ? 'animate-spin' : ''}`} />}
-            onClick={() => void refreshLogs()}
-          >
-            로그 새로고침
-          </OpalButton>
+        </summary>
+        <div className="mt-4 space-y-3">
+          <div className="flex justify-end">
+            <OpalButton
+              size="sm"
+              variant="secondary"
+              icon={<RefreshCcw className={`h-4 w-4 ${isLogLoading ? 'animate-spin' : ''}`} />}
+              onClick={() => void refreshLogs()}
+            >
+              로그 새로고침
+            </OpalButton>
+          </div>
+          <pre className="max-h-[360px] overflow-auto rounded-2xl bg-slate-900/90 p-4 text-xs leading-6 text-slate-200">
+            {selectedLogs || '빌드 로그가 없습니다.'}
+          </pre>
         </div>
-        <pre className="max-h-[360px] overflow-auto rounded-2xl bg-slate-900/90 p-4 text-xs leading-6 text-slate-200">
-          {selectedLogs || '빌드 로그가 없습니다.'}
-        </pre>
-      </div>
+      </details>
     </section>
   )
 }

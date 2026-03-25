@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Folder, FolderPlus, Plus, Trash2, X } from 'lucide-react'
-import { MetricCard, PageHeader, PageShell, Pill } from '../common'
+import { PageHeader, PageShell, Pill } from '../common'
 
 interface Collection {
   id: string
@@ -184,16 +184,10 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
     ? projects.filter((project) => !selectedCollection.projectIds.includes(project.id))
     : []
 
-  const summaryMetrics = [
-    { key: 'collections', label: '컬렉션 수', value: collections.length },
-    { key: 'projects', label: '담긴 프로젝트', value: totalCollectedProjects },
-    { key: 'public', label: '공개 컬렉션', value: publicCollections },
-    { key: 'available', label: '추가 가능', value: availableProjects.length },
-  ]
-
   return (
     <PageShell density="compact">
       <PageHeader
+        variant="simple"
         eyebrow={
           <>
             <Folder className="h-3.5 w-3.5" />
@@ -211,32 +205,38 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
         }
       />
 
-      <section className="page-metric-grid">
-        {summaryMetrics.map((metric) => (
-          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
-        ))}
-      </section>
-
-      <section className="page-toolbar-panel page-toolbar-stack">
-        <div className="page-toolbar-row">
-          <div className="page-toolbar-cluster">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200/80 bg-white/90 text-slate-700">
-              <Folder className="h-5 w-5" />
+      <section className="page-panel space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">컬렉션 수</span>
+              <span className="page-summary-value">{collections.length}</span>
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">컬렉션 관리</h2>
-              <p className="page-toolbar-note">개인 보드처럼 프로젝트를 모아 흐름과 맥락을 정리할 수 있습니다.</p>
+            <div className="page-summary-item">
+              <span className="page-summary-label">담긴 프로젝트</span>
+              <span className="page-summary-value">{totalCollectedProjects}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">공개 컬렉션</span>
+              <span className="page-summary-value">{publicCollections}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">{selectedCollection ? '추가 가능' : '전체 후보'}</span>
+              <span className="page-summary-value">{selectedCollection ? availableProjects.length : projects.length}</span>
             </div>
           </div>
+
           <button type="button" onClick={() => setShowCreateForm((previous) => !previous)} className="glass-inline-button">
             <FolderPlus className="h-4 w-4" />
-            새 컬렉션
+            {showCreateForm ? '작성 닫기' : '새 컬렉션'}
           </button>
         </div>
+
+        <p className="page-toolbar-note">개인 보드처럼 프로젝트를 묶어두고, 필요한 흐름만 다시 보기 쉽게 정리할 수 있습니다.</p>
       </section>
 
       {showCreateForm ? (
-        <section className="page-panel-lg">
+        <section className="page-panel">
           <div className="space-y-5">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">새 컬렉션 만들기</h3>
@@ -332,7 +332,7 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
             목록으로 돌아가기
           </button>
 
-          <div className="page-panel-lg">
+          <div className="page-panel">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-3">
                 <span className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-slate-100 text-3xl">
@@ -438,7 +438,7 @@ export function ProjectCollections({ projects, onProjectClick }: ProjectCollecti
               <article
                 key={collection.id}
                 onClick={() => setSelectedCollectionId(collection.id)}
-                className="cursor-pointer overflow-hidden rounded-[26px] border border-slate-200 bg-white/96 shadow-[0_12px_26px_rgba(17,37,56,0.08)] transition-[box-shadow,border-color,transform] duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_18px_32px_rgba(14,33,51,0.12)]"
+                className="cursor-pointer overflow-hidden rounded-[24px] border border-slate-200/85 bg-white/96 shadow-[0_10px_22px_rgba(15,23,42,0.06)] transition-[box-shadow,border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"
               >
                 <div className={`p-5 ${colorClass}`}>
                   <div className="flex items-center justify-between gap-2">

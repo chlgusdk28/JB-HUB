@@ -112,6 +112,7 @@ export function UserProfile({
   return (
     <PageShell density={shellDensity}>
       <PageHeader
+        variant="simple"
         eyebrow={
           <>
             <Sparkles className="h-3.5 w-3.5" />

@@ -19,7 +19,7 @@ import {
   Trash2,
   User,
 } from 'lucide-react'
-import { MetricCard, PageHeader, PageShell, Pill } from './common'
+import { PageHeader, PageShell, Pill } from './common'
 import { OpalButton } from './opal/OpalButton'
 import { OpalCard } from './opal/OpalCard'
 import { OpalTag } from './opal/OpalTag'
@@ -875,6 +875,7 @@ export function KnowledgeHubPage() {
   return (
     <PageShell density="compact">
       <PageHeader
+        variant="simple"
         eyebrow="Knowledge Hub"
         title="지식인"
         description="팀의 궁금증을 해결하는 실전 Q&A 허브입니다. 질문, 채택, 북마크, 공유, 내보내기까지 같은 화면 흐름 안에서 관리할 수 있습니다."
@@ -894,25 +895,31 @@ export function KnowledgeHubPage() {
             </OpalButton>
           </>
         }
-        meta={
-          <>
-            <Pill variant="subtle">전체 질문 {summary.total}</Pill>
-            <Pill variant="subtle">해결률 {summary.resolutionRate}%</Pill>
-            <Pill variant="subtle">누적 답변 {summary.answers}</Pill>
-            <Pill variant="subtle">내 질문 {summary.myQuestions}</Pill>
-            <Pill variant="subtle">북마크 {summary.bookmarked}</Pill>
-          </>
-        }
       />
 
-      <section className="page-metric-grid">
-        <MetricCard label="전체 질문" value={summary.total} />
-        <MetricCard label="해결된 질문" value={summary.resolved} />
-        <MetricCard label="미해결 질문" value={summary.unresolved} />
-        <MetricCard label="누적 답변" value={summary.answers} />
-      </section>
+      <section className="page-panel space-y-4 knowledge-command-deck">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">전체 질문</span>
+              <span className="page-summary-value">{summary.total}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">해결된 질문</span>
+              <span className="page-summary-value">{summary.resolved}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">미해결 질문</span>
+              <span className="page-summary-value">{summary.unresolved}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">누적 답변</span>
+              <span className="page-summary-value">{summary.answers}</span>
+            </div>
+          </div>
+          <span className="page-toolbar-note">검색, 상태, 태그, 밀도를 한 패널 안에서 바로 조정할 수 있게 단순화했습니다.</span>
+        </div>
 
-      <section className="page-toolbar-panel page-toolbar-stack knowledge-command-deck">
         <div className="space-y-4">
             <div className="knowledge-search-grid">
             <div className="relative">
@@ -1045,10 +1052,12 @@ export function KnowledgeHubPage() {
           ) : null}
 
             <div className="knowledge-result-bar">
-              <div className="flex flex-wrap items-center gap-2">
-                <Pill variant="subtle">활성 필터 {activeFilterCount}개</Pill>
-                <Pill variant="subtle">현재 결과 {filteredQuestions.length}개</Pill>
-                <Pill variant="subtle">단축키: `/` 검색, `Ctrl/Cmd + N` 새 질문</Pill>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                <span>활성 필터 {activeFilterCount}개</span>
+                <span className="text-slate-300">·</span>
+                <span>현재 결과 {filteredQuestions.length}개</span>
+                <span className="text-slate-300">·</span>
+                <span>단축키 `/`, `Ctrl/Cmd + N`</span>
               </div>
               <button type="button" onClick={resetFilters} className="filter-chip-clear">
                 빠른 초기화

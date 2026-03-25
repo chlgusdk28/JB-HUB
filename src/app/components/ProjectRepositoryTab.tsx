@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BookText, Download, FileCode2, FolderTree, GitBranch, LoaderCircle, PencilLine, Save, X } from 'lucide-react'
+import { BookText, Download, FileCode2, LoaderCircle, PencilLine, Save, X } from 'lucide-react'
 import {
   buildProjectFileDownloadUrl,
   fetchProjectReadme,
@@ -131,35 +131,28 @@ export function ProjectRepositoryTab({
   return (
     <div className="space-y-4">
       <section className="page-panel space-y-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <Pill variant="subtle">Project Repository</Pill>
-              <Pill variant="subtle">README + Source</Pill>
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-slate-900">프로젝트 기준으로 소스코드와 문서를 함께 관리합니다.</h2>
-              <p className="text-sm text-slate-600">
-                GitHub처럼 루트 README를 먼저 보여주고, 아래에서 폴더 구조를 유지한 채 파일과 소스코드를 업로드할 수 있습니다.
-              </p>
-            </div>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill variant="subtle">Repository</Pill>
           </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <div className="flex items-center gap-2 text-slate-700">
-                <GitBranch className="h-4 w-4" />
-                <span className="text-sm font-semibold">프로젝트 저장소</span>
-              </div>
-              <p className="mt-2 text-sm text-slate-600">파일 업로드는 프로젝트 단위로 분리되며 폴더 구조도 그대로 유지됩니다.</p>
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-slate-900">README와 소스 파일을 한 흐름으로 관리합니다.</h2>
+            <p className="text-sm text-slate-600">
+              루트 README를 먼저 보여주고, 아래에서는 프로젝트 폴더 구조를 유지한 채 파일과 소스코드를 이어서 다룰 수 있습니다.
+            </p>
+          </div>
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">README</span>
+              <span className="page-summary-value">{readme?.exists ? '저장됨' : '초안'}</span>
             </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <div className="flex items-center gap-2 text-slate-700">
-                <FolderTree className="h-4 w-4" />
-                <span className="text-sm font-semibold">README 문서 홈</span>
-              </div>
-              <p className="mt-2 text-sm text-slate-600">README는 루트 문서로 저장되고, 프로젝트 소개와 실행 방법을 한곳에 정리할 수 있습니다.</p>
+            <div className="page-summary-item">
+              <span className="page-summary-label">권한</span>
+              <span className="page-summary-value">{canManage && currentUserName.trim() ? '편집 가능' : '읽기 전용'}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">파일 구조</span>
+              <span className="page-summary-value">폴더 유지</span>
             </div>
           </div>
         </div>
@@ -184,18 +177,6 @@ export function ProjectRepositoryTab({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {readme ? (
-              <a
-                href={buildProjectFileDownloadUrl(projectId ?? 0, readme.path)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-              >
-                <Download className="h-4 w-4" />
-                원본 다운로드
-              </a>
-            ) : null}
-
             {isEditingReadme ? (
               <>
                 <button
@@ -218,15 +199,33 @@ export function ProjectRepositoryTab({
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => setIsEditingReadme(true)}
-                disabled={!canManage || !currentUserName.trim() || isReadmeLoading}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <PencilLine className="h-4 w-4" />
-                README 편집
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingReadme(true)}
+                  disabled={!canManage || !currentUserName.trim() || isReadmeLoading}
+                  className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <PencilLine className="h-4 w-4" />
+                  README 편집
+                </button>
+                {readme ? (
+                  <details className="rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm text-slate-700">
+                    <summary className="cursor-pointer list-none font-medium [&::-webkit-details-marker]:hidden">문서 작업</summary>
+                    <div className="mt-3">
+                      <a
+                        href={buildProjectFileDownloadUrl(projectId ?? 0, readme.path)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                      >
+                        <Download className="h-4 w-4" />
+                        원본 다운로드
+                      </a>
+                    </div>
+                  </details>
+                ) : null}
+              </>
             )}
           </div>
         </div>
@@ -246,7 +245,7 @@ export function ProjectRepositoryTab({
               README를 불러오는 중입니다.
             </div>
           ) : isEditingReadme ? (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <FileCode2 className="h-4 w-4 text-slate-500" />
@@ -264,7 +263,7 @@ export function ProjectRepositoryTab({
                 </p>
               </div>
 
-              <div className="space-y-2">
+              <div className="hidden space-y-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <BookText className="h-4 w-4 text-slate-500" />
                   미리보기
@@ -273,6 +272,14 @@ export function ProjectRepositoryTab({
                   <MarkdownContent markdown={previewMarkdown} variant="editor" />
                 </div>
               </div>
+              <details className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                <summary className="cursor-pointer list-none text-sm font-semibold text-slate-800 [&::-webkit-details-marker]:hidden">
+                  미리보기 열기
+                </summary>
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-5">
+                  <MarkdownContent markdown={previewMarkdown} variant="editor" />
+                </div>
+              </details>
             </div>
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-white p-5">

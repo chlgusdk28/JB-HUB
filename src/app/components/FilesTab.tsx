@@ -495,6 +495,21 @@ export function FilesTab({
           </p>
         </div>
 
+        <div className="page-summary-strip lg:max-w-[460px]">
+          <div className="page-summary-item">
+            <span className="page-summary-label">권한</span>
+            <span className="page-summary-value">{canManageFiles ? '업로드 가능' : '읽기 전용'}</span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">보관 한도</span>
+            <span className="page-summary-value">1GB</span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">업로드 환경</span>
+            <span className="page-summary-value">PC 권장</span>
+          </div>
+        </div>
+
         {!canUpload ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {projectAuthor
@@ -503,11 +518,11 @@ export function FilesTab({
           </div>
         ) : null}
 
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+        <div className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
           프로젝트 전체 파일 보관 한도는 1GB입니다. 많은 파일을 올릴 때는 자동으로 나눠 업로드합니다.
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 md:hidden">
+        <div className="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 md:hidden">
           모바일에서는 업로드를 숨겼습니다. 파일과 폴더 업로드는 PC에서만 사용할 수 있습니다.
         </div>
 
@@ -525,7 +540,7 @@ export function FilesTab({
             }
           }}
           onDrop={handleDrop}
-          className={`hidden cursor-pointer flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed px-6 py-10 text-center transition md:flex ${
+          className={`hidden cursor-pointer flex-col items-center justify-center gap-3 rounded-[24px] border-2 border-dashed px-6 py-8 text-center transition md:flex ${
             isDragActive
               ? 'border-sky-400 bg-sky-50'
               : 'border-slate-300 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(244,248,252,0.9))] hover:border-slate-400 hover:bg-white'
@@ -541,8 +556,8 @@ export function FilesTab({
               event.currentTarget.value = ''
             }}
           />
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-[0_12px_28px_rgba(15,23,42,0.2)]">
-            {isUploading ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Upload className="h-6 w-6" />}
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-[0_12px_24px_rgba(15,23,42,0.18)]">
+            {isUploading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
           </div>
           <div className="space-y-1">
             <p className="text-base font-semibold text-slate-900">여기에 파일을 놓거나 클릭해서 선택하세요.</p>
@@ -553,7 +568,7 @@ export function FilesTab({
           </span>
         </label>
 
-        <div className="hidden gap-3 md:grid md:grid-cols-2">
+        <div className="hidden gap-3 md:flex md:flex-col">
           <label
             className={`flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 transition ${
               isMutatingFiles || !canManageFiles ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-slate-300 hover:bg-slate-50'
@@ -578,8 +593,43 @@ export function FilesTab({
             />
           </label>
 
+          <details className="rounded-2xl border border-slate-200 bg-white">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-700">
+              추가 업로드 옵션
+            </summary>
+            <div className="space-y-3 border-t border-slate-200 px-4 py-3">
+              <label
+                className={`flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 transition ${
+                  isMutatingFiles || !canManageFiles
+                    ? 'cursor-not-allowed opacity-70'
+                    : 'cursor-pointer hover:border-slate-300 hover:bg-white'
+                }`}
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-700">
+                  <FolderUp className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-900">폴더 선택</p>
+                  <p className="text-xs text-slate-500">구조를 유지한 채 한 번에 업로드합니다.</p>
+                </div>
+                <input
+                  type="file"
+                  multiple
+                  className="sr-only"
+                  {...folderInputAttributes}
+                  disabled={!canManageFiles || isMutatingFiles}
+                  onChange={(event) => {
+                    handleFileSelection(event.currentTarget.files)
+                    event.currentTarget.value = ''
+                  }}
+                />
+              </label>
+              <p className="text-xs text-slate-500">대용량이나 폴더 단위 업로드는 PC에서 가장 안정적으로 동작합니다.</p>
+            </div>
+          </details>
+
           <label
-            className={`flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 transition ${
+            className={`hidden items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 transition ${
               isMutatingFiles || !canManageFiles ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-slate-300 hover:bg-slate-50'
             }`}
           >
@@ -604,7 +654,11 @@ export function FilesTab({
           </label>
         </div>
 
-        <div className="flex justify-end">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 md:hidden">
+          모바일에서는 파일 탐색과 미리보기 중심으로 사용할 수 있습니다. 업로드는 PC에서 진행해 주세요.
+        </div>
+
+        <div className="hidden justify-end">
           <button
             type="button"
             onClick={() => void loadFiles(selectedPath)}
@@ -624,9 +678,20 @@ export function FilesTab({
               <h3 className="text-sm font-semibold text-slate-900">파일 트리</h3>
               <p className="text-xs text-slate-500">폴더를 탐색하고 미리볼 파일을 선택하세요.</p>
             </div>
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
-              루트 항목 {files.length}개
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void loadFiles(selectedPath)}
+                disabled={isLoading || isMutatingFiles}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCcw className={`h-3.5 w-3.5 ${isLoading || isMutatingFiles ? 'animate-spin' : ''}`} />
+                새로고침
+              </button>
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                루트 항목 {files.length}개
+              </span>
+            </div>
           </div>
 
           <div className="max-h-[560px] overflow-y-auto">
@@ -662,30 +727,6 @@ export function FilesTab({
 
             {selectedFile ? (
               <div className="flex shrink-0 items-center gap-2">
-                {canManageFiles ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void handleDeletePath({
-                        name: selectedFile.name,
-                        path: selectedFile.path,
-                        type: 'file',
-                        size: selectedFile.size,
-                        updatedAt: selectedFile.updatedAt,
-                      })
-                    }
-                    disabled={isMutatingFiles}
-                    className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {deletingPath === selectedFile.path ? (
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                    삭제
-                  </button>
-                ) : null}
-
                 <a
                   href={buildProjectFileDownloadUrl(projectId, selectedFile.path)}
                   target="_blank"
@@ -695,6 +736,35 @@ export function FilesTab({
                   <Download className="h-4 w-4" />
                   다운로드
                 </a>
+
+                {canManageFiles ? (
+                  <details className="rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm text-slate-700">
+                    <summary className="cursor-pointer list-none font-medium [&::-webkit-details-marker]:hidden">파일 작업</summary>
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleDeletePath({
+                            name: selectedFile.name,
+                            path: selectedFile.path,
+                            type: 'file',
+                            size: selectedFile.size,
+                            updatedAt: selectedFile.updatedAt,
+                          })
+                        }
+                        disabled={isMutatingFiles}
+                        className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deletingPath === selectedFile.path ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        삭제
+                      </button>
+                    </div>
+                  </details>
+                ) : null}
               </div>
             ) : null}
           </div>

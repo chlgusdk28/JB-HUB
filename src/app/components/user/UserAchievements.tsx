@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Calendar,
   CheckCircle2,
@@ -14,7 +14,7 @@ import {
   Trophy,
   type LucideIcon,
 } from 'lucide-react'
-import { MetricCard, PageHeader, PageShell, Pill } from '../common'
+import { PageHeader, PageShell, Pill } from '../common'
 import {
   getAchievementScore,
   getAchievementStats,
@@ -239,10 +239,6 @@ function getUnlockStateLabel(achievement: Achievement) {
   return '미달성'
 }
 
-function MetricHint({ children }: { children: ReactNode }) {
-  return <span className="page-toolbar-note">{children}</span>
-}
-
 export function UserAchievements({
   projectsViewed = 0,
   bookmarksCount = 0,
@@ -344,16 +340,10 @@ export function UserAchievements({
   const activeFilterCount =
     Number(selectedCategory !== 'all') + Number(selectedRarity !== 'all') + Number(showUnlockedOnly)
 
-  const summaryMetrics = [
-    { key: 'unlocked', label: '달성 완료', value: stats.unlocked },
-    { key: 'progress', label: '진행 중', value: stats.inProgress },
-    { key: 'completion', label: '완료율', value: `${completionRate}%` },
-    { key: 'score', label: '업적 점수', value: achievementScore.toLocaleString() },
-  ]
-
   return (
     <PageShell density="compact">
       <PageHeader
+        variant="simple"
         eyebrow={
           <>
             <Trophy className="h-3.5 w-3.5" />
@@ -362,24 +352,32 @@ export function UserAchievements({
         }
         title="업적 센터"
         description="탐색, 참여, 퀘스트, 레벨 성장을 같은 카드 구조 안에서 비교할 수 있도록 정리한 개인 성과 보드입니다."
-        meta={
-          <>
-            <Pill variant="subtle">총 업적 {stats.total}</Pill>
-            <Pill variant="subtle">완료율 {completionRate}%</Pill>
-            <Pill variant="subtle">활성 필터 {activeFilterCount}</Pill>
-          </>
-        }
       />
 
-      <section className="page-metric-grid">
-        {summaryMetrics.map((metric) => (
-          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
-        ))}
-      </section>
+      <section className="page-panel space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">총 업적</span>
+              <span className="page-summary-value">{stats.total}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">달성 완료</span>
+              <span className="page-summary-value">{stats.unlocked}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">완료율</span>
+              <span className="page-summary-value">{completionRate}%</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">업적 점수</span>
+              <span className="page-summary-value">{achievementScore.toLocaleString()}</span>
+            </div>
+          </div>
+          <span className="page-toolbar-note">희소성, 진행률, 달성 상태를 같은 카드 문법 안에서 빠르게 비교할 수 있습니다.</span>
+        </div>
 
-      <section className="page-toolbar-panel page-toolbar-stack">
-        <div className="page-toolbar-row">
-          <div className="action-row action-row-scroll">
+        <div className="action-row action-row-scroll">
             {CATEGORY_OPTIONS.map((option) => {
               const Icon = option.icon
               const isActive = selectedCategory === option.value
@@ -396,8 +394,9 @@ export function UserAchievements({
                 </button>
               )
             })}
-          </div>
+        </div>
 
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="page-toolbar-cluster">
             <select
               value={selectedRarity}
@@ -432,11 +431,7 @@ export function UserAchievements({
               완료만 보기
             </button>
           </div>
-        </div>
-
-        <div className="page-toolbar-row">
-          <MetricHint>같은 카드 문법으로 희소성, 진행률, 달성 상태를 빠르게 비교할 수 있습니다.</MetricHint>
-          <MetricHint>표시 업적 {sortedAchievements.length}개</MetricHint>
+          <span className="page-toolbar-note">활성 필터 {activeFilterCount}개 · 표시 업적 {sortedAchievements.length}개</span>
         </div>
       </section>
 

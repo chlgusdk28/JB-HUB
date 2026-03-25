@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import {
   Copy,
   Download,
@@ -12,6 +12,7 @@ import {
   Upload,
   Wrench,
 } from 'lucide-react'
+import { PageHeader, PageShell, Pill } from './common'
 import { copyTextToClipboard } from '../lib/clipboard'
 import {
   compressPdfTool,
@@ -36,9 +37,9 @@ interface SelectionRect {
 }
 
 const TOOL_TABS: Array<{ id: ToolTabId; label: string; description: string }> = [
-  { id: 'ocr', label: 'OCR 작업실', description: '문서 이미지를 바로 분석해 텍스트를 추출합니다.' },
-  { id: 'image', label: '이미지 변환', description: '이미지 확장자를 빠르게 변환해 다운로드합니다.' },
-  { id: 'pdf', label: 'PDF 도구', description: '페이지 수 확인, 페이지 자르기, 가벼운 최적화를 수행합니다.' },
+  { id: 'ocr', label: 'OCR 작업실', description: '문서 이미지를 읽어 텍스트를 바로 추출합니다.' },
+  { id: 'image', label: '이미지 변환', description: '자주 쓰는 이미지 형식 변환을 빠르게 처리합니다.' },
+  { id: 'pdf', label: 'PDF 도구', description: '페이지 확인, 자르기, 최적화를 한 화면에서 진행합니다.' },
 ]
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -56,6 +57,14 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
+function formatFileSize(size: number) {
+  if (size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(size / 1024))} KB`
+  }
+
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
 function normalizeRect(start: Point, end: Point): SelectionRect {
   const x = Math.min(start.x, end.x)
   const y = Math.min(start.y, end.y)
@@ -64,7 +73,7 @@ function normalizeRect(start: Point, end: Point): SelectionRect {
   return { x, y, width, height }
 }
 
-function getRelativePoint(event: React.MouseEvent<HTMLElement>, image: HTMLImageElement): Point | null {
+function getRelativePoint(event: MouseEvent<HTMLElement>, image: HTMLImageElement): Point | null {
   const rect = image.getBoundingClientRect()
   const insideX = event.clientX >= rect.left && event.clientX <= rect.right
   const insideY = event.clientY >= rect.top && event.clientY <= rect.bottom
@@ -118,6 +127,7 @@ async function cropImageFromSelection(
         resolve(nextBlob)
         return
       }
+
       reject(new Error('선택한 영역을 이미지로 만들지 못했습니다.'))
     }, 'image/png')
   })
@@ -125,6 +135,17 @@ async function cropImageFromSelection(
   return new File([blob], `${fileName.replace(/\.[^.]+$/, '') || 'ocr-selection'}.png`, {
     type: 'image/png',
   })
+}
+
+function getToolIcon(tabId: ToolTabId) {
+  switch (tabId) {
+    case 'ocr':
+      return Sparkles
+    case 'image':
+      return FileImage
+    case 'pdf':
+      return FileText
+  }
 }
 
 interface ToolDropZoneProps {
@@ -163,7 +184,7 @@ function ToolDropZone({
         const file = event.dataTransfer.files[0] ?? null
         onFileChange(file)
       }}
-      className="rounded-[28px] border-2 border-dashed border-slate-300 bg-slate-50/70 p-5 text-left transition hover:border-slate-500 hover:bg-white"
+      className="rounded-3xl border border-dashed border-slate-300/80 bg-slate-50/70 p-5 text-left transition hover:border-slate-400 hover:bg-white"
     >
       <input
         ref={inputRef}
@@ -174,6 +195,7 @@ function ToolDropZone({
           onFileChange(event.target.files?.[0] ?? null)
         }}
       />
+
       <div className="flex items-start gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white">
           <Upload className="h-5 w-5" />
@@ -205,10 +227,67 @@ function StatusPanel({ title, description, tone = 'default' }: StatusPanelProps)
         : 'border-slate-200 bg-slate-50/90 text-slate-900'
 
   return (
-    <div className={`rounded-2xl border px-4 py-3 ${toneClassName}`}>
+    <div className={`rounded-3xl border px-4 py-3 ${toneClassName}`}>
       <p className="text-sm font-semibold">{title}</p>
       <p className="mt-1 text-sm leading-6 text-current/80">{description}</p>
     </div>
+  )
+}
+
+interface ToolSectionHeaderProps {
+  icon: ReactNode
+  title: string
+  description: string
+  badge?: ReactNode
+}
+
+function ToolSectionHeader({ icon, title, description, badge }: ToolSectionHeaderProps) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+          {icon}
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+          <p className="text-sm leading-6 text-slate-600">{description}</p>
+        </div>
+      </div>
+      {badge ? <div className="shrink-0">{badge}</div> : null}
+    </div>
+  )
+}
+
+interface ToolActionButtonProps {
+  label: string
+  icon: ReactNode
+  onClick: () => void
+  disabled?: boolean
+  variant?: 'primary' | 'secondary'
+}
+
+function ToolActionButton({
+  label,
+  icon,
+  onClick,
+  disabled = false,
+  variant = 'primary',
+}: ToolActionButtonProps) {
+  const className =
+    variant === 'primary'
+      ? 'bg-slate-950 text-white hover:bg-slate-800 disabled:bg-slate-300'
+      : 'border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 disabled:text-slate-400'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed ${className}`}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 
@@ -225,6 +304,7 @@ export function ToolsPage() {
   const [ocrDragStart, setOcrDragStart] = useState<Point | null>(null)
 
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [imageFormat, setImageFormat] = useState('png')
   const [imageBusy, setImageBusy] = useState(false)
   const [imageStatus, setImageStatus] = useState('이미지 파일을 올리고 원하는 형식을 선택하세요.')
@@ -242,6 +322,9 @@ export function ToolsPage() {
   useEffect(() => {
     if (!ocrFile) {
       setOcrPreviewUrl(null)
+      setOcrText('')
+      setOcrSelection(null)
+      setOcrStatus('이미지를 올린 뒤 전체 OCR 또는 영역 OCR을 실행해 보세요.')
       return
     }
 
@@ -255,12 +338,28 @@ export function ToolsPage() {
   }, [ocrFile])
 
   useEffect(() => {
+    if (!imageFile) {
+      setImagePreviewUrl(null)
+      setImageStatus('이미지 파일을 올리고 원하는 형식을 선택하세요.')
+      return
+    }
+
+    const nextUrl = URL.createObjectURL(imageFile)
+    setImagePreviewUrl(nextUrl)
+    setImageStatus(`${imageFile.name}을 준비했습니다. 출력 형식을 골라 주세요.`)
+
+    return () => URL.revokeObjectURL(nextUrl)
+  }, [imageFile])
+
+  useEffect(() => {
     let cancelled = false
 
     if (!pdfFile) {
       setPdfPageCount(null)
       setPdfStartPage(1)
       setPdfEndPage(1)
+      setPdfMetaLoading(false)
+      setPdfStatus('PDF 파일을 올리면 페이지 수를 확인하고 도구를 활성화합니다.')
       return
     }
 
@@ -298,27 +397,6 @@ export function ToolsPage() {
     }
   }, [pdfFile])
 
-  const importedFeatureCards = useMemo(
-    () => [
-      {
-        title: '문서 OCR',
-        description: '이미지에서 텍스트를 뽑고 결과를 바로 복사할 수 있게 구성했습니다.',
-        icon: Sparkles,
-      },
-      {
-        title: '이미지 변환',
-        description: '운영 중 자주 쓰는 확장자 변환을 `Tools` 안에서 바로 처리할 수 있습니다.',
-        icon: Image,
-      },
-      {
-        title: 'PDF 유틸리티',
-        description: '페이지 수 확인, 페이지 자르기, 가벼운 최적화까지 한곳에서 처리하는 흐름으로 다시 묶었습니다.',
-        icon: FileText,
-      },
-    ],
-    [],
-  )
-
   async function executeOcr(useSelection: boolean) {
     if (!ocrFile) {
       setOcrStatus('먼저 OCR할 이미지를 선택해 주세요.')
@@ -335,6 +413,7 @@ export function ToolsPage() {
         if (!image || !ocrSelection || ocrSelection.width < 10 || ocrSelection.height < 10) {
           throw new Error('먼저 미리보기에서 OCR할 영역을 드래그해 주세요.')
         }
+
         nextFile = await cropImageFromSelection(image, ocrSelection, ocrFile.name)
       }
 
@@ -383,12 +462,22 @@ export function ToolsPage() {
       return
     }
 
+    const safeStartPage = Math.max(1, Math.trunc(pdfStartPage) || 1)
+    const safeEndPage = Math.max(safeStartPage, Math.trunc(pdfEndPage) || safeStartPage)
+
+    if (pdfPageCount && safeEndPage > pdfPageCount) {
+      setPdfStatus(`끝 페이지는 ${pdfPageCount} 이하로 입력해 주세요.`)
+      return
+    }
+
     try {
       setPdfBusyAction('slice')
+      setPdfStartPage(safeStartPage)
+      setPdfEndPage(safeEndPage)
       setPdfStatus('선택한 페이지 범위로 새 PDF를 만드는 중입니다.')
-      const result = await slicePdfTool(pdfFile, pdfStartPage, pdfEndPage)
+      const result = await slicePdfTool(pdfFile, safeStartPage, safeEndPage)
       downloadBlob(result.blob, result.fileName)
-      setPdfStatus(`페이지 ${pdfStartPage} ~ ${pdfEndPage} 범위를 새 PDF로 만들었습니다.`)
+      setPdfStatus(`페이지 ${safeStartPage} ~ ${safeEndPage} 범위를 새 PDF로 만들었습니다.`)
     } catch (error) {
       setPdfStatus(error instanceof Error ? error.message : 'PDF 페이지 자르기에 실패했습니다.')
     } finally {
@@ -415,455 +504,504 @@ export function ToolsPage() {
     }
   }
 
+  const activeTabConfig = TOOL_TABS.find((tab) => tab.id === activeTab) ?? TOOL_TABS[0]
+  const ActiveTabIcon = getToolIcon(activeTabConfig.id)
+  const readyToolCount = [ocrFile, imageFile, pdfFile].filter(Boolean).length
+  const activeFile = activeTab === 'ocr' ? ocrFile : activeTab === 'image' ? imageFile : pdfFile
+  const ocrSelectionLabel = ocrSelection
+    ? `${Math.round(ocrSelection.width)} x ${Math.round(ocrSelection.height)}`
+    : '선택 없음'
+  const pdfRangeLabel = pdfPageCount ? `${Math.max(1, pdfStartPage)} ~ ${Math.max(Math.max(1, pdfStartPage), pdfEndPage)}` : '미정'
+
+  const renderOcrView = () => (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+      <section className="page-panel space-y-4">
+        <ToolSectionHeader
+          icon={<Sparkles className="h-5 w-5" />}
+          title="문서 OCR"
+          description="이미지 전체 또는 원하는 영역만 읽어 텍스트를 추출합니다."
+          badge={<Pill variant="subtle">언어 {ocrLanguage === 'kor+eng' ? '한/영' : ocrLanguage === 'kor' ? '한글' : '영문'}</Pill>}
+        />
+
+        <ToolDropZone
+          title="OCR할 문서 이미지 업로드"
+          description="PNG, JPG, GIF, BMP, TIFF 같은 문서 이미지를 올릴 수 있습니다."
+          accept="image/*"
+          selectedFile={ocrFile}
+          onFileChange={setOcrFile}
+        />
+
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-900">OCR 언어</span>
+          <select
+            value={ocrLanguage}
+            onChange={(event) => setOcrLanguage(event.target.value)}
+            className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+          >
+            <option value="kor+eng">한국어 + 영어</option>
+            <option value="kor">한국어</option>
+            <option value="eng">영어</option>
+          </select>
+        </label>
+
+        <StatusPanel
+          title="작업 상태"
+          description={ocrStatus}
+          tone={ocrText.trim() ? 'success' : 'default'}
+        />
+
+        <div className="flex flex-wrap gap-2.5">
+          <ToolActionButton
+            label="전체 OCR"
+            icon={ocrBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
+            onClick={() => {
+              void executeOcr(false)
+            }}
+            disabled={ocrBusy || !ocrFile}
+          />
+          <ToolActionButton
+            label="선택 영역 OCR"
+            icon={ocrBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}
+            onClick={() => {
+              void executeOcr(true)
+            }}
+            disabled={ocrBusy || !ocrFile || !ocrSelection}
+            variant="secondary"
+          />
+          <ToolActionButton
+            label="초기화"
+            icon={<RefreshCw className="h-4 w-4" />}
+            onClick={() => {
+              setOcrSelection(null)
+              setOcrText('')
+              setOcrStatus('선택 영역과 OCR 결과를 비웠습니다.')
+            }}
+            variant="secondary"
+          />
+        </div>
+      </section>
+
+      <section className="page-panel space-y-4">
+        <ToolSectionHeader
+          icon={<ActiveTabIcon className="h-5 w-5" />}
+          title="미리보기와 결과"
+          description="드래그로 영역을 선택하고, 같은 패널에서 바로 결과를 확인할 수 있습니다."
+          badge={<Pill variant="subtle">{ocrSelection ? `영역 ${ocrSelectionLabel}` : '전체 처리 가능'}</Pill>}
+        />
+
+        {ocrPreviewUrl ? (
+          <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+            <div
+              className="relative overflow-auto rounded-3xl border border-slate-200 bg-white p-3"
+              onMouseDown={(event) => {
+                const image = ocrImageRef.current
+                if (!image) {
+                  return
+                }
+
+                const point = getRelativePoint(event, image)
+                if (!point) {
+                  return
+                }
+
+                event.preventDefault()
+                setOcrDragStart(point)
+                setOcrSelection({ x: point.x, y: point.y, width: 0, height: 0 })
+              }}
+              onMouseMove={(event) => {
+                const image = ocrImageRef.current
+                if (!image || !ocrDragStart) {
+                  return
+                }
+
+                const point = getRelativePoint(event, image)
+                if (!point) {
+                  return
+                }
+
+                setOcrSelection(normalizeRect(ocrDragStart, point))
+              }}
+              onMouseUp={(event) => {
+                const image = ocrImageRef.current
+                if (!image || !ocrDragStart) {
+                  return
+                }
+
+                const point = getRelativePoint(event, image) ?? ocrDragStart
+                const nextSelection = normalizeRect(ocrDragStart, point)
+                setOcrSelection(nextSelection.width >= 10 && nextSelection.height >= 10 ? nextSelection : null)
+                setOcrDragStart(null)
+              }}
+              onMouseLeave={() => {
+                if (ocrDragStart) {
+                  setOcrDragStart(null)
+                }
+              }}
+            >
+              <div className="relative inline-block">
+                <img
+                  ref={ocrImageRef}
+                  src={ocrPreviewUrl}
+                  alt="OCR 미리보기"
+                  className="block max-h-[64vh] max-w-full rounded-2xl"
+                />
+                {ocrSelection ? (
+                  <div
+                    className="pointer-events-none absolute rounded-xl border-2 border-emerald-600 bg-emerald-400/20"
+                    style={{
+                      left: `${ocrSelection.x}px`,
+                      top: `${ocrSelection.y}px`,
+                      width: `${ocrSelection.width}px`,
+                      height: `${ocrSelection.height}px`,
+                    }}
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <StatusPanel
+            title="미리보기 대기 중"
+            description="OCR할 이미지를 올리면 이 영역에서 범위를 선택할 수 있습니다."
+          />
+        )}
+
+        <div className="page-summary-strip">
+          <div className="page-summary-item">
+            <span className="page-summary-label">선택 파일</span>
+            <span className="page-summary-value">{ocrFile ? ocrFile.name : '없음'}</span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">선택 영역</span>
+            <span className="page-summary-value">{ocrSelectionLabel}</span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">결과 상태</span>
+            <span className="page-summary-value">{ocrText.trim() ? '추출됨' : '대기 중'}</span>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200/80 pt-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">OCR 결과</h4>
+              <p className="mt-1 text-sm text-slate-500">필요하면 결과를 바로 수정하거나 복사해서 사용할 수 있습니다.</p>
+            </div>
+            <ToolActionButton
+              label="결과 복사"
+              icon={<Copy className="h-4 w-4" />}
+              onClick={() => {
+                void handleCopyOcrResult()
+              }}
+              disabled={!ocrText.trim()}
+              variant="secondary"
+            />
+          </div>
+          <textarea
+            value={ocrText}
+            onChange={(event) => setOcrText(event.target.value)}
+            placeholder="OCR 결과가 여기에 표시됩니다."
+            className="mt-3 min-h-[220px] w-full rounded-3xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm text-slate-900 outline-none transition focus:border-slate-500"
+          />
+        </div>
+      </section>
+    </section>
+  )
+
+  const renderImageView = () => (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+      <section className="page-panel space-y-4">
+        <ToolSectionHeader
+          icon={<FileImage className="h-5 w-5" />}
+          title="이미지 변환"
+          description="이미지 확장자를 바꿔 바로 다운로드할 수 있는 단순한 흐름입니다."
+          badge={<Pill variant="subtle">출력 {imageFormat.toUpperCase()}</Pill>}
+        />
+
+        <ToolDropZone
+          title="변환할 이미지 업로드"
+          description="PNG, JPG, GIF, BMP, TIFF, WEBP 같은 일반 이미지 파일을 사용할 수 있습니다."
+          accept="image/*"
+          selectedFile={imageFile}
+          onFileChange={setImageFile}
+        />
+
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-900">변환 형식</span>
+          <select
+            value={imageFormat}
+            onChange={(event) => setImageFormat(event.target.value)}
+            className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+          >
+            <option value="png">PNG</option>
+            <option value="jpg">JPG</option>
+            <option value="gif">GIF</option>
+            <option value="bmp">BMP</option>
+            <option value="tif">TIFF</option>
+          </select>
+        </label>
+
+        <StatusPanel
+          title="변환 상태"
+          description={imageStatus}
+          tone={imageStatus.startsWith('변환 완료') ? 'success' : 'default'}
+        />
+
+        <ToolActionButton
+          label="변환 후 다운로드"
+          icon={imageBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          onClick={() => {
+            void handleConvertImage()
+          }}
+          disabled={imageBusy || !imageFile}
+        />
+      </section>
+
+      <section className="page-panel space-y-4">
+        <ToolSectionHeader
+          icon={<Image className="h-5 w-5" />}
+          title="미리보기"
+          description="선택한 파일과 출력 형식을 한 번에 확인하고 바로 변환할 수 있습니다."
+          badge={<Pill variant="subtle">{imageFile ? formatFileSize(imageFile.size) : '파일 대기'}</Pill>}
+        />
+
+        {imagePreviewUrl ? (
+          <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+            <div className="flex min-h-[320px] items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-white p-4">
+              <img
+                src={imagePreviewUrl}
+                alt="이미지 미리보기"
+                className="max-h-[320px] max-w-full rounded-2xl object-contain"
+              />
+            </div>
+          </div>
+        ) : (
+          <StatusPanel
+            title="미리보기 대기 중"
+            description="이미지를 올리면 여기에서 파일 상태와 변환 방향을 확인할 수 있습니다."
+          />
+        )}
+
+        <div className="page-summary-strip">
+          <div className="page-summary-item">
+            <span className="page-summary-label">입력 파일</span>
+            <span className="page-summary-value">{imageFile ? imageFile.name : '없음'}</span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">출력 형식</span>
+            <span className="page-summary-value">{imageFormat.toUpperCase()}</span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">다운로드</span>
+            <span className="page-summary-value">즉시 저장</span>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
+          <h4 className="text-sm font-semibold text-slate-900">빠른 사용 팁</h4>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+            <li>스캔 문서는 PNG로 맞춰 두면 OCR 전처리에 더 유리합니다.</li>
+            <li>전달용 파일은 JPG로 바꾸면 용량을 가볍게 정리하기 쉽습니다.</li>
+            <li>부서 요청 형식이 정해져 있을 때 BMP나 TIFF로 바로 바꿀 수 있습니다.</li>
+          </ul>
+        </div>
+      </section>
+    </section>
+  )
+
+  const renderPdfView = () => (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+      <section className="page-panel space-y-4">
+        <ToolSectionHeader
+          icon={<FileText className="h-5 w-5" />}
+          title="PDF 도구"
+          description="페이지 수 확인, 원하는 범위 자르기, 가벼운 최적화를 한곳에서 처리합니다."
+          badge={<Pill variant="subtle">{pdfMetaLoading ? '분석 중' : pdfPageCount ? `${pdfPageCount}페이지` : '파일 대기'}</Pill>}
+        />
+
+        <ToolDropZone
+          title="작업할 PDF 업로드"
+          description="페이지 정보를 확인한 뒤 필요한 범위만 잘라내거나, 가볍게 다시 저장할 수 있습니다."
+          accept="application/pdf,.pdf"
+          selectedFile={pdfFile}
+          onFileChange={setPdfFile}
+        />
+
+        <StatusPanel
+          title="PDF 상태"
+          description={pdfStatus}
+          tone={pdfPageCount ? 'success' : 'default'}
+        />
+
+        <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">페이지 범위 자르기</p>
+              <p className="text-sm text-slate-600">필요한 구간만 새 PDF로 만들어 내려받습니다.</p>
+            </div>
+            <Pill variant="subtle">{pdfRangeLabel}</Pill>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
+            <label className="space-y-2 text-sm font-medium text-slate-700">
+              <span>시작 페이지</span>
+              <input
+                type="number"
+                min={1}
+                max={pdfPageCount ?? undefined}
+                value={pdfStartPage}
+                onChange={(event) => setPdfStartPage(Number.parseInt(event.target.value || '1', 10))}
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500"
+              />
+            </label>
+            <div className="pb-3 text-center text-sm text-slate-500">~</div>
+            <label className="space-y-2 text-sm font-medium text-slate-700">
+              <span>끝 페이지</span>
+              <input
+                type="number"
+                min={1}
+                max={pdfPageCount ?? undefined}
+                value={pdfEndPage}
+                onChange={(event) => setPdfEndPage(Number.parseInt(event.target.value || '1', 10))}
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            <ToolActionButton
+              label="페이지 자르기"
+              icon={pdfBusyAction === 'slice' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}
+              onClick={() => {
+                void handleSlicePdf()
+              }}
+              disabled={!pdfFile || pdfMetaLoading || pdfBusyAction !== null}
+            />
+            <ToolActionButton
+              label="PDF 최적화"
+              icon={pdfBusyAction === 'compress' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              onClick={() => {
+                void handleCompressPdf()
+              }}
+              disabled={!pdfFile || pdfMetaLoading || pdfBusyAction !== null}
+              variant="secondary"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="page-panel space-y-4">
+        <ToolSectionHeader
+          icon={<ActiveTabIcon className="h-5 w-5" />}
+          title="현재 파일과 흐름"
+          description="지금 선택한 파일 상태와 실행 전 확인 포인트만 간단히 남겼습니다."
+          badge={<Pill variant="subtle">{pdfFile ? pdfFile.name : '파일 없음'}</Pill>}
+        />
+
+        <div className="page-summary-strip">
+          <div className="page-summary-item">
+            <span className="page-summary-label">선택 파일</span>
+            <span className="page-summary-value">{pdfFile ? pdfFile.name : '없음'}</span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">페이지 수</span>
+            <span className="page-summary-value">
+              {pdfMetaLoading ? '확인 중' : pdfPageCount ? `${pdfPageCount}페이지` : '미확인'}
+            </span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">선택 범위</span>
+            <span className="page-summary-value">{pdfRangeLabel}</span>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
+          <h4 className="text-sm font-semibold text-slate-900">추천 사용 흐름</h4>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+            <li>먼저 페이지 수를 확인한 뒤 필요한 구간만 잘라 공유본을 만듭니다.</li>
+            <li>외부 전달용 문서는 최적화 버튼으로 다시 저장해 용량을 한 번 더 정리합니다.</li>
+            <li>스캔 이미지 PDF라면 이미지 변환이나 OCR 탭과 이어서 사용하는 흐름이 가장 깔끔합니다.</li>
+          </ul>
+        </div>
+
+        <StatusPanel
+          title="작업 참고"
+          description="페이지 범위는 자동으로 1페이지 이상으로 보정하고, 끝 페이지가 총 페이지 수를 넘으면 실행 전에 안내합니다."
+        />
+      </section>
+    </section>
+  )
+
   return (
-    <div className="page-shell space-y-6">
-      <section className="rounded-[32px] border border-slate-200/80 bg-white/90 p-6 shadow-[0_20px_48px_rgba(15,23,42,0.08)]">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="max-w-3xl space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-              <Sparkles className="h-3.5 w-3.5" />
-              Tools Workspace
+    <PageShell density="compact">
+      <PageHeader
+        variant="simple"
+        eyebrow="Tools Workspace"
+        title="작업 도구"
+        description="OCR, 이미지 변환, PDF 작업을 큰 장식 없이 한 화면에서 바로 처리할 수 있게 정리했습니다."
+        meta={<Pill variant="subtle">현재 {activeTabConfig.label}</Pill>}
+      />
+
+      <section className="page-panel space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">현재 도구</span>
+              <span className="page-summary-value">{activeTabConfig.label}</span>
             </div>
-            <h2 className="text-2xl font-semibold tracking-tight text-slate-900">허브 안에서 바로 쓰는 작업 도구 모음</h2>
-            <p className="text-sm leading-6 text-slate-600">
-              OCR과 파일 유틸리티를 `Tools` 메뉴 안에서 바로 실행하고 다운로드할 수 있게 구성했습니다.
-              별도 화면으로 이동하지 않고 허브 안에서 바로 작업할 수 있습니다.
-            </p>
+            <div className="page-summary-item">
+              <span className="page-summary-label">선택 파일</span>
+              <span className="page-summary-value">{activeFile ? activeFile.name : '없음'}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">처리 흐름</span>
+              <span className="page-summary-value">업로드 → 실행 → 다운로드</span>
+            </div>
           </div>
 
-          <div className="min-w-[220px] rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">현재 연결</p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">OCR + File Tools</p>
-            <p className="mt-1 text-sm text-slate-600">이미지 OCR, 이미지 변환, PDF 자르기와 최적화를 바로 실행할 수 있습니다.</p>
-          </div>
+          <p className="page-toolbar-note">필요한 도구만 선택해 바로 작업하고, 결과는 같은 화면에서 확인할 수 있습니다.</p>
         </div>
-      </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {importedFeatureCards.map((item) => {
-          const Icon = item.icon
-          return (
-            <article
-              key={item.title}
-              className="rounded-[28px] border border-slate-200/80 bg-white/82 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.07)]"
-            >
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white">
-                <Icon className="h-5 w-5" />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-slate-900">{item.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
-            </article>
-          )
-        })}
-      </section>
-
-      <section className="rounded-[32px] border border-slate-200/80 bg-white/86 p-3 shadow-[0_20px_48px_rgba(15,23,42,0.08)]">
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-          {TOOL_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-[24px] px-4 py-4 text-left transition ${
-                activeTab === tab.id
-                  ? 'bg-slate-950 text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)]'
-                  : 'bg-slate-50 text-slate-800 hover:bg-slate-100'
-              }`}
-            >
-              <p className="text-sm font-semibold">{tab.label}</p>
-              <p className={`mt-1 text-sm leading-6 ${activeTab === tab.id ? 'text-white/75' : 'text-slate-600'}`}>
-                {tab.description}
-              </p>
-            </button>
-          ))}
-        </div>
-      </section>
+          {TOOL_TABS.map((tab) => {
+            const Icon = getToolIcon(tab.id)
+            const isActive = activeTab === tab.id
 
-      {activeTab === 'ocr' ? (
-        <section className="grid grid-cols-1 gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-          <div className="space-y-4 rounded-[30px] border border-slate-200/80 bg-white/86 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-slate-900">문서 OCR</h3>
-                <p className="text-sm text-slate-600">이미지 전체 또는 선택 영역만 OCR로 읽어 텍스트를 추출합니다.</p>
-              </div>
-            </div>
-
-            <ToolDropZone
-              title="OCR할 문서 이미지 업로드"
-              description="PNG, JPG, GIF, BMP, TIFF 같은 문서 이미지를 올릴 수 있습니다."
-              accept="image/*"
-              selectedFile={ocrFile}
-              onFileChange={setOcrFile}
-            />
-
-            <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-4">
-              <label className="text-sm font-semibold text-slate-900" htmlFor="ocr-language">
-                OCR 언어
-              </label>
-              <select
-                id="ocr-language"
-                value={ocrLanguage}
-                onChange={(event) => setOcrLanguage(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
-              >
-                <option value="kor+eng">한국어 + 영어</option>
-                <option value="kor">한국어</option>
-                <option value="eng">영어</option>
-              </select>
-            </div>
-
-            <StatusPanel
-              title="작업 상태"
-              description={ocrStatus}
-              tone={ocrText.trim() ? 'success' : 'default'}
-            />
-
-            <div className="flex flex-wrap gap-3">
+            return (
               <button
+                key={tab.id}
                 type="button"
-                onClick={() => void executeOcr(false)}
-                disabled={ocrBusy || !ocrFile}
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded-3xl border px-4 py-4 text-left transition ${
+                  isActive
+                    ? 'border-slate-900 bg-slate-950 text-white'
+                    : 'border-slate-200/80 bg-white/80 text-slate-800 hover:border-slate-300 hover:bg-white'
+                }`}
               >
-                {ocrBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
-                전체 OCR
-              </button>
-              <button
-                type="button"
-                onClick={() => void executeOcr(true)}
-                disabled={ocrBusy || !ocrFile || !ocrSelection}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
-              >
-                {ocrBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}
-                선택 영역 OCR
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setOcrSelection(null)
-                  setOcrText('')
-                  setOcrStatus('선택 영역과 OCR 결과를 비웠습니다.')
-                }}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                <RefreshCw className="h-4 w-4" />
-                초기화
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-4 rounded-[30px] border border-slate-200/80 bg-white/86 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)]">
-            <div className="space-y-2">
-              <h3 className="text-lg font-semibold text-slate-900">미리보기와 결과</h3>
-              <p className="text-sm leading-6 text-slate-600">
-                미리보기에서 드래그하면 영역 선택이 저장됩니다. 선택 영역 OCR은 해당 부분만 잘라 서버로 보내 처리합니다.
-              </p>
-            </div>
-
-            {ocrPreviewUrl ? (
-              <div className="rounded-[28px] border border-slate-200 bg-slate-50/90 p-4">
-                <div
-                  className="relative overflow-auto rounded-2xl border border-slate-200 bg-white p-3"
-                  onMouseDown={(event) => {
-                    const image = ocrImageRef.current
-                    if (!image) {
-                      return
-                    }
-                    const point = getRelativePoint(event, image)
-                    if (!point) {
-                      return
-                    }
-                    event.preventDefault()
-                    setOcrDragStart(point)
-                    setOcrSelection({ x: point.x, y: point.y, width: 0, height: 0 })
-                  }}
-                  onMouseMove={(event) => {
-                    const image = ocrImageRef.current
-                    if (!image || !ocrDragStart) {
-                      return
-                    }
-                    const point = getRelativePoint(event, image)
-                    if (!point) {
-                      return
-                    }
-                    setOcrSelection(normalizeRect(ocrDragStart, point))
-                  }}
-                  onMouseUp={(event) => {
-                    const image = ocrImageRef.current
-                    if (!image || !ocrDragStart) {
-                      return
-                    }
-                    const point = getRelativePoint(event, image) ?? ocrDragStart
-                    const nextSelection = normalizeRect(ocrDragStart, point)
-                    setOcrSelection(nextSelection.width >= 10 && nextSelection.height >= 10 ? nextSelection : null)
-                    setOcrDragStart(null)
-                  }}
-                  onMouseLeave={() => {
-                    if (ocrDragStart) {
-                      setOcrDragStart(null)
-                    }
-                  }}
-                >
-                  <div className="relative inline-block">
-                    <img
-                      ref={ocrImageRef}
-                      src={ocrPreviewUrl}
-                      alt="OCR 미리보기"
-                      className="block max-h-[68vh] max-w-full rounded-2xl"
-                    />
-                    {ocrSelection ? (
-                      <div
-                        className="pointer-events-none absolute rounded-xl border-2 border-emerald-600 bg-emerald-400/20"
-                        style={{
-                          left: `${ocrSelection.x}px`,
-                          top: `${ocrSelection.y}px`,
-                          width: `${ocrSelection.width}px`,
-                          height: `${ocrSelection.height}px`,
-                        }}
-                      />
-                    ) : null}
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
+                      isActive ? 'bg-white/14 text-white' : 'bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">{tab.label}</p>
+                    <p className={`text-sm leading-6 ${isActive ? 'text-white/78' : 'text-slate-600'}`}>
+                      {tab.description}
+                    </p>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <StatusPanel
-                title="미리보기 대기 중"
-                description="OCR할 이미지를 올리면 여기에서 선택 영역을 지정할 수 있습니다."
-              />
-            )}
+              </button>
+            )
+          })}
+        </div>
+      </section>
 
-            <div className="rounded-[28px] border border-slate-200 bg-slate-50/90 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <h4 className="text-sm font-semibold text-slate-900">OCR 결과</h4>
-                <button
-                  type="button"
-                  onClick={() => void handleCopyOcrResult()}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
-                >
-                  <Copy className="h-4 w-4" />
-                  결과 복사
-                </button>
-              </div>
-              <textarea
-                value={ocrText}
-                onChange={(event) => setOcrText(event.target.value)}
-                placeholder="OCR 결과가 여기에 표시됩니다."
-                className="mt-3 min-h-[240px] w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm text-slate-900 outline-none transition focus:border-slate-500"
-              />
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {activeTab === 'image' ? (
-        <section className="grid grid-cols-1 gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-          <div className="space-y-4 rounded-[30px] border border-slate-200/80 bg-white/86 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                <FileImage className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-slate-900">이미지 확장자 변환</h3>
-                <p className="text-sm text-slate-600">이미지 확장자를 바꿔 바로 다운로드할 수 있는 도구입니다.</p>
-              </div>
-            </div>
-
-            <ToolDropZone
-              title="변환할 이미지 업로드"
-              description="PNG, JPG, GIF, BMP, TIFF, WEBP 등 일반 이미지 파일을 사용할 수 있습니다."
-              accept="image/*"
-              selectedFile={imageFile}
-              onFileChange={setImageFile}
-            />
-
-            <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-4">
-              <label className="text-sm font-semibold text-slate-900" htmlFor="image-format">
-                변환 형식
-              </label>
-              <select
-                id="image-format"
-                value={imageFormat}
-                onChange={(event) => setImageFormat(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
-              >
-                <option value="png">PNG</option>
-                <option value="jpg">JPG</option>
-                <option value="gif">GIF</option>
-                <option value="bmp">BMP</option>
-                <option value="tif">TIFF</option>
-              </select>
-            </div>
-
-            <StatusPanel
-              title="변환 상태"
-              description={imageStatus}
-              tone={imageStatus.startsWith('변환 완료') ? 'success' : 'default'}
-            />
-
-            <button
-              type="button"
-              onClick={() => void handleConvertImage()}
-              disabled={imageBusy || !imageFile}
-              className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              {imageBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              변환 후 다운로드
-            </button>
-          </div>
-
-          <div className="space-y-4 rounded-[30px] border border-slate-200/80 bg-white/86 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)]">
-            <div className="rounded-[28px] border border-slate-200 bg-slate-50/90 p-5">
-              <h4 className="text-lg font-semibold text-slate-900">현재 구성</h4>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                이미지 파일을 선택한 형식으로 변환한 뒤 바로 다운로드하는 단일 흐름으로 구성했습니다.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <StatusPanel
-                title="입력"
-                description={imageFile ? `${imageFile.name} (${Math.round(imageFile.size / 1024)} KB)` : '선택된 이미지가 없습니다.'}
-              />
-              <StatusPanel
-                title="출력"
-                description={`${imageFormat.toUpperCase()} 파일로 변환해 즉시 다운로드합니다.`}
-              />
-            </div>
-
-            <div className="rounded-[28px] border border-dashed border-slate-300 bg-[linear-gradient(180deg,rgba(248,250,252,0.95),rgba(241,245,249,0.95))] p-5">
-              <h4 className="text-lg font-semibold text-slate-900">활용 예시</h4>
-              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-                <li>문서 스캔 이미지를 PNG로 바꿔 OCR 품질을 높일 때</li>
-                <li>배포용 이미지를 JPG로 가볍게 전달할 때</li>
-                <li>부서 요청 형식에 맞춰 BMP/TIFF로 변환할 때</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {activeTab === 'pdf' ? (
-        <section className="grid grid-cols-1 gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-          <div className="space-y-4 rounded-[30px] border border-slate-200/80 bg-white/86 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                <FileText className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-slate-900">PDF 도구</h3>
-                <p className="text-sm text-slate-600">페이지 수 확인, 원하는 범위 자르기, 가벼운 재저장을 한곳에서 처리합니다.</p>
-              </div>
-            </div>
-
-            <ToolDropZone
-              title="작업할 PDF 업로드"
-              description="페이지 정보 확인 후 원하는 범위를 잘라내거나, 가볍게 다시 저장할 수 있습니다."
-              accept="application/pdf,.pdf"
-              selectedFile={pdfFile}
-              onFileChange={setPdfFile}
-            />
-
-            <StatusPanel
-              title="PDF 상태"
-              description={pdfStatus}
-              tone={pdfPageCount ? 'success' : 'default'}
-            />
-
-            <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">페이지 범위 자르기</p>
-                  <p className="text-sm text-slate-600">필요한 구간만 새 PDF로 만들어 다운로드합니다.</p>
-                </div>
-                <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                  {pdfMetaLoading ? '페이지 수 확인 중...' : pdfPageCount ? `총 ${pdfPageCount}페이지` : 'PDF 대기'}
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
-                <label className="space-y-2 text-sm font-medium text-slate-700">
-                  <span>시작 페이지</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={pdfPageCount ?? undefined}
-                    value={pdfStartPage}
-                    onChange={(event) => setPdfStartPage(Number.parseInt(event.target.value || '1', 10))}
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500"
-                  />
-                </label>
-                <div className="pb-3 text-center text-sm text-slate-500">~</div>
-                <label className="space-y-2 text-sm font-medium text-slate-700">
-                  <span>끝 페이지</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={pdfPageCount ?? undefined}
-                    value={pdfEndPage}
-                    onChange={(event) => setPdfEndPage(Number.parseInt(event.target.value || '1', 10))}
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-500"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => void handleSlicePdf()}
-                  disabled={!pdfFile || pdfMetaLoading || pdfBusyAction !== null}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  {pdfBusyAction === 'slice' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}
-                  페이지 자르기
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCompressPdf()}
-                  disabled={!pdfFile || pdfMetaLoading || pdfBusyAction !== null}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
-                >
-                  {pdfBusyAction === 'compress' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  PDF 최적화
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4 rounded-[30px] border border-slate-200/80 bg-white/86 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)]">
-            <div className="rounded-[28px] border border-slate-200 bg-slate-50/90 p-5">
-              <h4 className="text-lg font-semibold text-slate-900">구성 메모</h4>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                현재 버전은 페이지 자르기와 페이지 수 확인을 중심으로 구성했고,
-                최적화는 불필요한 구조를 덜어내는 가벼운 재저장 방식으로 동작합니다.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <StatusPanel
-                title="선택한 파일"
-                description={pdfFile ? pdfFile.name : '선택된 PDF가 없습니다.'}
-              />
-              <StatusPanel
-                title="페이지 수"
-                description={pdfMetaLoading ? '확인 중입니다.' : pdfPageCount ? `${pdfPageCount}페이지` : '아직 확인 전입니다.'}
-              />
-            </div>
-
-            <div className="rounded-[28px] border border-dashed border-slate-300 bg-[linear-gradient(180deg,rgba(248,250,252,0.95),rgba(241,245,249,0.95))] p-5">
-              <h4 className="text-lg font-semibold text-slate-900">추천 사용 흐름</h4>
-              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-                <li>먼저 페이지 수를 확인하고 필요한 구간만 잘라 별도 공유본을 만듭니다.</li>
-                <li>외부 전달용 파일은 최적화 버튼으로 다시 저장해 용량을 한 번 더 정리합니다.</li>
-                <li>스캔본 이미지는 필요하면 이미지 변환 탭과 조합해 OCR 전에 먼저 다듬을 수 있습니다.</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-      ) : null}
-    </div>
+      {activeTab === 'ocr' ? renderOcrView() : null}
+      {activeTab === 'image' ? renderImageView() : null}
+      {activeTab === 'pdf' ? renderPdfView() : null}
+    </PageShell>
   )
 }

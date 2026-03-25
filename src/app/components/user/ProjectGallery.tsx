@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Grid, Image, List, Sparkles } from 'lucide-react'
-import { MetricCard, PageHeader, PageShell, Pill } from '../common'
+import { Grid, Image, List, RotateCcw, Sparkles } from 'lucide-react'
+import { PageHeader, PageShell, Pill } from '../common'
 
 interface Project {
   id: number
@@ -82,13 +82,6 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
   }, [filterDepartment, filterTag, projects, sortBy])
 
   const activeFilterCount = Number(Boolean(filterTag)) + Number(Boolean(filterDepartment))
-  const summaryMetrics = [
-    { key: 'total', label: '전체 프로젝트', value: projects.length },
-    { key: 'visible', label: '현재 표시', value: filteredProjects.length },
-    { key: 'departments', label: '부서 범위', value: allDepartments.length },
-    { key: 'tags', label: '태그 범위', value: allTags.length },
-  ]
-
   const renderTrendBadge = (trend?: string) => {
     if (trend === 'up') {
       return (
@@ -117,6 +110,7 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
   return (
     <PageShell density="compact">
       <PageHeader
+        variant="simple"
         eyebrow={
           <>
             <Sparkles className="h-3.5 w-3.5" />
@@ -135,14 +129,44 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
         }
       />
 
-      <section className="page-metric-grid">
-        {summaryMetrics.map((metric) => (
-          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
-        ))}
-      </section>
+      <section className="page-panel space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">전체 프로젝트</span>
+              <span className="page-summary-value">{projects.length}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">현재 표시</span>
+              <span className="page-summary-value">{filteredProjects.length}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">부서 범위</span>
+              <span className="page-summary-value">{allDepartments.length}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">태그 범위</span>
+              <span className="page-summary-value">{allTags.length}</span>
+            </div>
+          </div>
 
-      <section className="page-toolbar-panel page-toolbar-stack">
-        <div className="page-toolbar-row">
+          {activeFilterCount > 0 || sortBy !== 'newest' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSortBy('newest')
+                setFilterDepartment('')
+                setFilterTag('')
+              }}
+              className="glass-inline-button"
+            >
+              <RotateCcw className="h-4 w-4" />
+              필터 초기화
+            </button>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="page-toggle-cluster">
             {(Object.keys(VIEW_MODE_LABELS) as ViewMode[]).map((mode) => {
               const Icon = VIEW_MODE_ICONS[mode]
@@ -162,42 +186,45 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
             })}
           </div>
 
-          <div className="page-toolbar-cluster">
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="select-soft max-w-[11rem]">
-              <option value="newest">기본 정렬</option>
-              <option value="stars">스타순</option>
-              <option value="views">조회수순</option>
-              <option value="comments">댓글순</option>
-            </select>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:min-w-[38rem]">
+            <label className="space-y-2">
+              <span className="field-label">정렬</span>
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="select-soft">
+                <option value="newest">기본 정렬</option>
+                <option value="stars">스타순</option>
+                <option value="views">조회수순</option>
+                <option value="comments">댓글순</option>
+              </select>
+            </label>
 
-            <select
-              value={filterDepartment}
-              onChange={(event) => setFilterDepartment(event.target.value)}
-              className="select-soft max-w-[12rem]"
-            >
-              <option value="">전체 부서</option>
-              {allDepartments.map((department) => (
-                <option key={department} value={department}>
-                  {department}
-                </option>
-              ))}
-            </select>
+            <label className="space-y-2">
+              <span className="field-label">부서</span>
+              <select value={filterDepartment} onChange={(event) => setFilterDepartment(event.target.value)} className="select-soft">
+                <option value="">전체 부서</option>
+                {allDepartments.map((department) => (
+                  <option key={department} value={department}>
+                    {department}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-            <select value={filterTag} onChange={(event) => setFilterTag(event.target.value)} className="select-soft max-w-[12rem]">
-              <option value="">전체 태그</option>
-              {allTags.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
+            <label className="space-y-2">
+              <span className="field-label">태그</span>
+              <select value={filterTag} onChange={(event) => setFilterTag(event.target.value)} className="select-soft">
+                <option value="">전체 태그</option>
+                {allTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
 
-        <div className="page-toolbar-row">
-          <span className="page-toolbar-note">
-            부서와 태그 필터를 결합해도 동일한 시각 스타일로 비교되도록 정리했습니다.
-          </span>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <span className="page-toolbar-note">부서와 태그를 결합해도 같은 시각 리듬으로 비교되도록 정리했습니다.</span>
           <span className="page-toolbar-note">총 {filteredProjects.length}개 프로젝트</span>
         </div>
       </section>
@@ -346,11 +373,16 @@ export function ProjectGallery({ projects, onProjectClick }: ProjectGalleryProps
               <p className="mb-4 line-clamp-2 text-sm text-slate-600">{project.description}</p>
 
               <div className="mb-4 flex flex-wrap gap-2">
-                {project.tags.map((tag) => (
+                {project.tags.slice(0, 4).map((tag) => (
                   <span key={tag} className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-sm text-slate-700">
                     {tag}
                   </span>
                 ))}
+                {project.tags.length > 4 ? (
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm text-slate-500">
+                    +{project.tags.length - 4}
+                  </span>
+                ) : null}
               </div>
 
               <div className="flex items-center justify-between border-t border-slate-200/80 pt-4 text-sm text-slate-500">

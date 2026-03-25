@@ -109,6 +109,7 @@ function HomePageViewBase({
   return (
     <PageShell density={shellDensity === 'compact' ? 'compact' : 'relaxed'}>
       <PageHeader
+        variant="feature"
         eyebrow={eyebrow}
         title={
           <>

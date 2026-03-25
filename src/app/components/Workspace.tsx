@@ -105,6 +105,7 @@ export function Workspace({
   return (
     <PageShell density="compact">
       <PageHeader
+        variant="simple"
         eyebrow={
           <>
             <FolderGit2 className="h-3.5 w-3.5" />
@@ -113,13 +114,7 @@ export function Workspace({
         }
         title="워크스페이스"
         description="지금 바로 이어서 볼 프로젝트만 정리한 개인 작업 공간입니다."
-        meta={
-          <>
-            <Pill variant="subtle">{currentUser.name}</Pill>
-            <Pill variant="subtle">{currentUser.department}</Pill>
-            <Pill variant="subtle">{WORKSPACE_TAB_LABELS[activeTab]}</Pill>
-          </>
-        }
+        meta={<Pill variant="subtle">{WORKSPACE_TAB_LABELS[activeTab]}</Pill>}
       />
 
       <section className="page-panel space-y-4">

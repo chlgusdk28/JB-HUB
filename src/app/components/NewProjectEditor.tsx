@@ -57,7 +57,7 @@ export function NewProjectEditor({
     tags: [],
   })
   const [currentTag, setCurrentTag] = useState('')
-  const [editorMode, setEditorMode] = useState<EditorMode>('split')
+  const [editorMode, setEditorMode] = useState<EditorMode>('write')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const markdownRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -207,9 +207,9 @@ export function NewProjectEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between rounded-t-2xl border-b border-slate-200 bg-white px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm">
+      <div className="surface-panel max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[28px]">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200/80 bg-white/92 px-5 py-4 backdrop-blur sm:px-6">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">새 프로젝트 에디터</h2>
             <p className="text-xs text-slate-500">마크다운으로 프로젝트 설명을 작성하고 미리보기를 확인할 수 있습니다.</p>
@@ -224,8 +224,8 @@ export function NewProjectEditor({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <form onSubmit={handleSubmit} className="space-y-4 p-5 sm:p-6">
+          <div className="page-panel grid grid-cols-1 gap-4 lg:grid-cols-2">
             <label className="space-y-2">
               <span className="text-sm font-medium text-slate-700">프로젝트명</span>
               <input
@@ -284,7 +284,7 @@ export function NewProjectEditor({
             </label>
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <div className="page-panel space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-slate-700">태그</span>
               <div className="flex flex-1 items-center gap-2">
@@ -328,47 +328,56 @@ export function NewProjectEditor({
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="page-panel space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm font-medium text-slate-700">프로젝트 설명</span>
-              <div className="flex rounded-full border border-slate-200 bg-white p-1">
-                {(['write', 'split', 'preview'] as EditorMode[]).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setEditorMode(mode)}
-                    className={`chip-filter !px-3 !py-1 ${editorMode === mode ? 'chip-filter-active' : 'chip-filter-idle'}`}
-                  >
-                    {mode === 'write' ? '작성' : mode === 'split' ? '분할' : '미리보기'}
-                  </button>
-                ))}
-              </div>
+              <span className="text-xs text-slate-500">기본은 작성 화면으로 시작하고, 필요할 때만 미리보기 도구를 열 수 있습니다.</span>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => insertMarkdown('# ', '', '제목')} className="glass-inline-button !px-3 !py-1.5 text-xs">
-                제목
-              </button>
-              <button type="button" onClick={() => insertMarkdown('## ', '', '섹션')} className="glass-inline-button !px-3 !py-1.5 text-xs">
-                섹션
-              </button>
-              <button type="button" onClick={() => insertMarkdown('- ', '', '항목')} className="glass-inline-button !px-3 !py-1.5 text-xs">
-                리스트
-              </button>
-              <button type="button" onClick={() => insertMarkdown('**', '**', '강조')} className="glass-inline-button !px-3 !py-1.5 text-xs">
-                굵게
-              </button>
-              <button type="button" onClick={() => insertMarkdown('`', '`', '코드')} className="glass-inline-button !px-3 !py-1.5 text-xs">
-                코드
-              </button>
-              <button
-                type="button"
-                onClick={() => insertMarkdown('[', '](https://example.com)', '링크 텍스트')}
-                className="glass-inline-button !px-3 !py-1.5 text-xs"
-              >
-                링크
-              </button>
-            </div>
+            <details className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3">
+              <summary className="cursor-pointer list-none text-sm font-medium text-slate-700 [&::-webkit-details-marker]:hidden">
+                보기/서식 도구 열기
+              </summary>
+              <div className="mt-3 space-y-3">
+                <div className="flex rounded-full border border-slate-200 bg-white p-1">
+                  {(['write', 'split', 'preview'] as EditorMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setEditorMode(mode)}
+                      className={`chip-filter !px-3 !py-1 ${editorMode === mode ? 'chip-filter-active' : 'chip-filter-idle'}`}
+                    >
+                      {mode === 'write' ? '작성' : mode === 'split' ? '분할' : '미리보기'}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => insertMarkdown('# ', '', '제목')} className="glass-inline-button !px-3 !py-1.5 text-xs">
+                    제목
+                  </button>
+                  <button type="button" onClick={() => insertMarkdown('## ', '', '섹션')} className="glass-inline-button !px-3 !py-1.5 text-xs">
+                    섹션
+                  </button>
+                  <button type="button" onClick={() => insertMarkdown('- ', '', '항목')} className="glass-inline-button !px-3 !py-1.5 text-xs">
+                    리스트
+                  </button>
+                  <button type="button" onClick={() => insertMarkdown('**', '**', '강조')} className="glass-inline-button !px-3 !py-1.5 text-xs">
+                    굵게
+                  </button>
+                  <button type="button" onClick={() => insertMarkdown('`', '`', '코드')} className="glass-inline-button !px-3 !py-1.5 text-xs">
+                    코드
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => insertMarkdown('[', '](https://example.com)', '링크 텍스트')}
+                    className="glass-inline-button !px-3 !py-1.5 text-xs"
+                  >
+                    링크
+                  </button>
+                </div>
+              </div>
+            </details>
 
             <div className={`grid gap-4 ${editorMode === 'split' ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
               {editorMode !== 'preview' ? (
@@ -376,12 +385,12 @@ export function NewProjectEditor({
                   ref={markdownRef}
                   value={form.markdown}
                   onChange={(event) => setForm((previous) => ({ ...previous, markdown: event.target.value }))}
-                  className="min-h-[420px] w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm text-slate-900 outline-none ring-slate-200 transition focus:border-slate-500 focus:ring-2"
+                  className="min-h-[360px] w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm text-slate-900 outline-none ring-slate-200 transition focus:border-slate-500 focus:ring-2"
                 />
               ) : null}
 
               {editorMode !== 'write' ? (
-                <div className="min-h-[420px] rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="min-h-[360px] rounded-2xl border border-slate-200 bg-white p-5">
                   <MarkdownContent markdown={form.markdown} variant="editor" />
                 </div>
               ) : null}

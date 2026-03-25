@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Bell, Palette, Save, Settings, Shield } from 'lucide-react'
-import { MetricCard, PageHeader, PageShell, Pill } from '../common'
+import { PageHeader, PageShell, Pill } from '../common'
 import {
   applyUserSettings,
   loadUserSettings,
@@ -185,16 +185,10 @@ export function UserSettings({
     window.setTimeout(() => setSaved(false), 2000)
   }
 
-  const summaryMetrics = [
-    { key: 'theme', label: '현재 테마', value: THEME_LABELS[settings.theme] },
-    { key: 'language', label: '언어', value: LANGUAGE_LABELS[settings.language] },
-    { key: 'density', label: '정보 밀도', value: DENSITY_LABELS[settings.density] },
-    { key: 'notifications', label: '활성 알림', value: enabledNotificationCount },
-  ]
-
   return (
     <PageShell density={shellDensity}>
       <PageHeader
+        variant="simple"
         eyebrow={
           <>
             <Settings className="h-3.5 w-3.5" />
@@ -216,49 +210,57 @@ export function UserSettings({
             </button>
           </>
         }
-        meta={
-          <>
-            <Pill variant="subtle">현재 탭 {getTabLabel(activeTab)}</Pill>
-            <Pill variant="subtle">알림 {enabledNotificationCount}개 활성</Pill>
-            {saved ? <Pill variant="subtle">저장 완료</Pill> : null}
-          </>
-        }
+        meta={saved ? <Pill variant="subtle">저장 완료</Pill> : undefined}
       />
 
-      <section className="page-metric-grid">
-        {summaryMetrics.map((metric) => (
-          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
-        ))}
-      </section>
-
-      <section className="page-toolbar-panel page-toolbar-stack">
-        <div className="page-toolbar-row">
-          <div className="page-toggle-cluster">
-            {TAB_OPTIONS.map((tab) => {
-              const Icon = tab.icon
-
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`page-toggle-button ${
-                    activeTab === tab.id ? 'page-toggle-button-active' : 'page-toggle-button-idle'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {tab.label}
-                </button>
-              )
-            })}
+      <section className="page-panel space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">현재 테마</span>
+              <span className="page-summary-value">{THEME_LABELS[settings.theme]}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">언어</span>
+              <span className="page-summary-value">{LANGUAGE_LABELS[settings.language]}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">정보 밀도</span>
+              <span className="page-summary-value">{DENSITY_LABELS[settings.density]}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">활성 알림</span>
+              <span className="page-summary-value">{enabledNotificationCount}</span>
+            </div>
           </div>
+
           <span className="page-toolbar-note">설정값은 화면 미리보기에 바로 반영되고, 저장하면 다음 방문에도 유지됩니다.</span>
+        </div>
+
+        <div className="page-toggle-cluster">
+          {TAB_OPTIONS.map((tab) => {
+            const Icon = tab.icon
+
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`page-toggle-button ${
+                  activeTab === tab.id ? 'page-toggle-button-active' : 'page-toggle-button-idle'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
       </section>
 
       {activeTab === 'appearance' ? (
         <section className="page-card-grid">
-          <div className="page-panel-lg space-y-4">
+          <div className="page-panel space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">테마</h2>
               <p className="mt-1 text-sm text-slate-500">허브 전체 분위기와 대비를 선택합니다.</p>
@@ -293,7 +295,7 @@ export function UserSettings({
             </div>
           </div>
 
-          <div className="page-panel-lg space-y-4">
+          <div className="page-panel space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">언어</h2>
               <p className="mt-1 text-sm text-slate-500">문서 언어와 기본 인터페이스 방향을 설정합니다.</p>
@@ -311,7 +313,7 @@ export function UserSettings({
             </div>
           </div>
 
-          <div className="page-panel-lg space-y-4">
+          <div className="page-panel space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">정보 밀도</h2>
               <p className="mt-1 text-sm text-slate-500">프로젝트 카드 간격과 주요 화면의 여백을 조절합니다.</p>
@@ -394,13 +396,13 @@ export function UserSettings({
 
       {activeTab === 'account' ? (
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-          <div className="page-panel-lg space-y-4">
+          <div className="page-panel space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">계정 정보</h2>
               <p className="mt-1 text-sm text-slate-500">현재 로그인한 사용자의 기본 정보를 확인합니다.</p>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">이름</p>
                 <p className="mt-2 text-base font-semibold text-slate-900">{currentUser?.name ?? '알 수 없음'}</p>
@@ -432,7 +434,7 @@ export function UserSettings({
             </div>
           </div>
 
-          <div className="page-panel-lg space-y-4">
+          <div className="page-panel space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">안내</h2>
               <p className="mt-1 text-sm text-slate-500">개인설정은 현재 허브 UI 기준으로 적용 가능한 항목부터 연결되어 있습니다.</p>

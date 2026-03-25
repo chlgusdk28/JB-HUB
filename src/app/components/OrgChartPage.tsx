@@ -10,7 +10,7 @@ import {
   Users,
   UserSquare2,
 } from 'lucide-react'
-import { MetricCard, PageHeader, PageShell, Pill } from './common'
+import { PageHeader, PageShell } from './common'
 import { OpalCard } from './opal/OpalCard'
 import { OpalInput } from './opal/OpalInput'
 import { OpalButton } from './opal/OpalButton'
@@ -471,6 +471,7 @@ export function OrgChartPage() {
   return (
     <PageShell density="compact">
       <PageHeader
+        variant="simple"
         eyebrow={
           <>
             <Network className="h-3.5 w-3.5" />
@@ -479,24 +480,32 @@ export function OrgChartPage() {
         }
         title="사내 조직도"
         description="조직 구조, 리더, 인원, 채용 상태를 한 화면에서 확인할 수 있습니다. API 연계 전까지는 샘플 데이터로 동작하며, 연계 후에는 실시간 변경 사항을 반영할 수 있도록 구성했습니다."
-        meta={
-          <>
-            <Pill variant="subtle">조직 구분: {selectedDivision}</Pill>
-            <Pill variant="subtle">보기 방식: {viewMode === 'tree' ? '트리' : '목록'}</Pill>
-            <Pill variant="subtle">조회 결과: {filteredDirectory.length}</Pill>
-            {selectedNode ? <Pill variant="subtle">선택 조직: {selectedNode.name}</Pill> : null}
-          </>
-        }
       />
 
-      <section className="page-metric-grid">
-        <MetricCard label="총 인원" value={rootNode.memberCount} />
-        <MetricCard label="조직 단위" value={totalOrganizationCount} />
-        <MetricCard label="채용 포지션" value={totalLeafOpenRoles} />
-        <MetricCard label="조회 결과" value={filteredDirectory.length} />
-      </section>
+      <section className="page-panel space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">총 인원</span>
+              <span className="page-summary-value">{rootNode.memberCount}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">조직 단위</span>
+              <span className="page-summary-value">{totalOrganizationCount}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">채용 포지션</span>
+              <span className="page-summary-value">{totalLeafOpenRoles}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">조회 결과</span>
+              <span className="page-summary-value">{filteredDirectory.length}</span>
+            </div>
+          </div>
 
-      <section className="page-toolbar-panel page-toolbar-stack">
+          <span className="page-toolbar-note">조직 구조와 선택 조직 상세를 같은 흐름 안에서 바로 비교할 수 있도록 정리했습니다.</span>
+        </div>
+
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_14rem_12rem]">
           <OpalInput
             value={query}
@@ -535,7 +544,7 @@ export function OrgChartPage() {
           </label>
         </div>
 
-        <div className="page-toolbar-row">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="action-row action-row-scroll">
             <button
               type="button"
@@ -554,9 +563,7 @@ export function OrgChartPage() {
               필터 초기화
             </OpalButton>
           </div>
-          <span className="page-toolbar-note">
-            선택 조직과 필터 결과를 같은 레이아웃 안에서 비교할 수 있도록 정리했습니다.
-          </span>
+          <span className="page-toolbar-note">현재 결과 {filteredDirectory.length}개 조직</span>
         </div>
       </section>
 

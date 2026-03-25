@@ -4,6 +4,8 @@ import { NavigationMenuItem } from './NavigationMenuItem'
 import { PageHeader } from './PageHeader'
 import type { NavigationSection } from './navigation-types'
 
+type HeaderVariant = 'standard' | 'simple' | 'feature'
+
 interface PlatformFrameProps<TId extends string = string> {
   brandMark: ReactNode
   brandEyebrow: ReactNode
@@ -18,6 +20,7 @@ interface PlatformFrameProps<TId extends string = string> {
   headerDescription?: ReactNode
   headerActions?: ReactNode
   headerMeta?: ReactNode
+  headerVariant?: HeaderVariant
   sidebarLead?: ReactNode
   sidebarFooter?: ReactNode
   children: ReactNode
@@ -38,6 +41,7 @@ export function PlatformFrame<TId extends string = string>({
   headerDescription,
   headerActions,
   headerMeta,
+  headerVariant = 'standard',
   sidebarLead,
   sidebarFooter,
   children,
@@ -107,6 +111,7 @@ export function PlatformFrame<TId extends string = string>({
             description={headerDescription}
             actions={headerActions}
             meta={headerMeta}
+            variant={headerVariant}
             className="platform-main-header"
           />
         ) : null}

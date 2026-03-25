@@ -17,6 +17,7 @@ export function NavigationMenuItem<TId extends string = string>({
   const mobileClass = isActive ? 'nav-item-mobile-active' : 'nav-item-mobile-idle'
   const lockClass = item.locked ? 'nav-item-locked' : ''
   const isLocked = Boolean(item.locked)
+  const badgeLabel = item.badge !== undefined && item.badge > 99 ? '99+' : item.badge
 
   return (
     <button
@@ -41,7 +42,7 @@ export function NavigationMenuItem<TId extends string = string>({
         {item.locked ? (
           <span className="nav-item-lock-badge">잠금</span>
         ) : item.badge !== undefined && item.badge > 0 ? (
-          <span className={isActive ? 'nav-item-badge-active' : 'nav-item-badge-idle'}>{item.badge}</span>
+          <span className={isActive ? 'nav-item-badge-active' : 'nav-item-badge-idle'}>{badgeLabel}</span>
         ) : null}
       </div>
     </button>

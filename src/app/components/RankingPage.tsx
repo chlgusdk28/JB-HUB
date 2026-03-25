@@ -2,7 +2,7 @@
 import { Building2, Eye, GitFork, Search, Star, Trophy, UserRound } from 'lucide-react'
 import type { Project } from '../lib/project-utils'
 import { fetchRankings, type ProjectRankings } from '../lib/projects-api'
-import { MetricCard, PageHeader, PageShell, Pill } from './common'
+import { PageHeader, PageShell } from './common'
 import { OpalCard } from './opal/OpalCard'
 import { OpalTag } from './opal/OpalTag'
 import { TableSkeleton } from './Skeleton'
@@ -232,17 +232,10 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
 
   const currentCount = activeTab === 'projects' ? visibleProjects.length : activeTab === 'contributors' ? visibleContributors.length : visibleDepartments.length
   const totalCount = activeTab === 'projects' ? filteredProjects.length : activeTab === 'contributors' ? filteredContributors.length : filteredDepartments.length
-  const activeTabLabel = activeTab === 'projects' ? '프로젝트' : activeTab === 'contributors' ? '기여자' : '부서'
-  const summaryMetrics = [
-    { key: 'projects', label: '프로젝트 랭킹', value: displayedProjects.length },
-    { key: 'contributors', label: '기여자 랭킹', value: displayedContributors.length },
-    { key: 'departments', label: '부서 랭킹', value: displayedDepartments.length },
-    { key: 'results', label: '현재 결과', value: `${currentCount}/${totalCount}` },
-  ]
-
   return (
-    <PageShell>
+    <PageShell density="compact">
       <PageHeader
+        variant="simple"
         eyebrow={
           <>
             <Trophy className="h-3.5 w-3.5" />
@@ -251,23 +244,49 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
         }
         title="랭킹"
         description="프로젝트 스타, 포크, 조회수, 기여 활동을 기반으로 실시간 랭킹을 제공합니다."
-        meta={
-          <>
-            <Pill variant="subtle">탭: {activeTabLabel}</Pill>
-            <Pill variant="subtle">표시 범위: TOP {limit}</Pill>
-            <Pill variant="subtle">결과: {currentCount}/{totalCount}</Pill>
-          </>
-        }
       />
 
-      <section className="page-metric-grid">
-        {summaryMetrics.map((metric) => (
-          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
-        ))}
-      </section>
+      <section className="page-panel space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">프로젝트 랭킹</span>
+              <span className="page-summary-value">{displayedProjects.length}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">기여자 랭킹</span>
+              <span className="page-summary-value">{displayedContributors.length}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">부서 랭킹</span>
+              <span className="page-summary-value">{displayedDepartments.length}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">현재 결과</span>
+              <span className="page-summary-value">
+                {currentCount}/{totalCount}
+              </span>
+            </div>
+          </div>
 
-      <section className="page-toolbar-panel page-toolbar-stack">
-        <div className="page-toolbar-row">
+          <div className="page-input-shell">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              placeholder={
+                activeTab === 'projects'
+                  ? '프로젝트/작성자/태그 검색'
+                  : activeTab === 'contributors'
+                    ? '기여자/부서 검색'
+                    : '부서 검색'
+              }
+              className="w-full rounded-xl border border-slate-300 bg-white/90 py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:border-slate-500 focus:ring-2"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="page-toggle-cluster">
             <button
               type="button"
@@ -301,24 +320,6 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
             </button>
           </div>
 
-          <div className="page-input-shell">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder={
-                activeTab === 'projects'
-                  ? '프로젝트/작성자/태그 검색'
-                  : activeTab === 'contributors'
-                    ? '기여자/부서 검색'
-                    : '부서 검색'
-              }
-              className="w-full rounded-xl border border-slate-300 bg-white/90 py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:border-slate-500 focus:ring-2"
-            />
-          </div>
-        </div>
-
-        <div className="page-toolbar-row">
           <div className="page-toolbar-cluster">
             {RANKING_LIMIT_OPTIONS.map((item) => (
               <button
@@ -331,8 +332,9 @@ export function RankingPage({ projects, onProjectClick }: RankingPageProps) {
               </button>
             ))}
           </div>
-          <p className="page-toolbar-note">총 {totalCount}개 중 {currentCount}개를 표시합니다.</p>
         </div>
+
+        <p className="page-toolbar-note">총 {totalCount}개 중 {currentCount}개를 현재 탭 기준으로 표시합니다.</p>
       </section>
 
       {activeTab === 'projects' ? (

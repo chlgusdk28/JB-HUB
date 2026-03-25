@@ -5,7 +5,7 @@ import {
   type DiscussionCategory,
   type DiscussionPost,
 } from '../data/discussions'
-import { MetricCard, PageHeader, PageShell, Pill } from './common'
+import { PageHeader, PageShell } from './common'
 import { OpalCard } from './opal/OpalCard'
 import { OpalTag } from './opal/OpalTag'
 
@@ -87,13 +87,6 @@ export function CommunityDiscussion({
     return [...filtered].sort((a, b) => b.id - a.id)
   }, [discussions, keyword, selectedCategory, showHotOnly, sortBy])
 
-  const summaryMetrics = [
-    { key: 'total', label: '전체 토론', value: discussions.length },
-    { key: 'hot', label: '인기글', value: hotDiscussionCount },
-    { key: 'category', label: '카테고리 결과', value: activeCategoryCount },
-    { key: 'filtered', label: '현재 표시', value: filteredDiscussions.length },
-  ]
-
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -123,8 +116,9 @@ export function CommunityDiscussion({
   }
 
   return (
-    <PageShell>
+    <PageShell density="compact">
       <PageHeader
+        variant="simple"
         eyebrow={
           <>
             <MessageSquare className="h-3.5 w-3.5" />
@@ -133,52 +127,27 @@ export function CommunityDiscussion({
         }
         title="커뮤니티"
         description="구현 노하우를 공유하고, 질문하고, 재사용 가능한 패턴을 기록하세요."
-        meta={
-          <>
-            <Pill variant="subtle">카테고리: {getCategoryLabel(selectedCategory)}</Pill>
-            <Pill variant="subtle">정렬: {sortBy === 'popular' ? '인기순' : '최신순'}</Pill>
-            <Pill variant="subtle">밀도: {discussionDensity === 'compact' ? '컴팩트' : '여유'}</Pill>
-            <Pill variant="subtle">결과: {filteredDiscussions.length}</Pill>
-          </>
-        }
       />
 
-      <section className="page-metric-grid">
-        {summaryMetrics.map((metric) => (
-          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
-        ))}
-      </section>
-
-      <section className="page-toolbar-panel page-toolbar-stack">
-        <div className="page-toolbar-row">
-          <div className="action-row action-row-scroll">
-            <button
-              type="button"
-              onClick={() => setSelectedCategory('All')}
-              className={`chip-filter ${selectedCategory === 'All' ? 'chip-filter-active' : 'chip-filter-idle'}`}
-            >
-              전체 ({discussions.length})
-            </button>
-            {DISCUSSION_CATEGORIES.map((category) => {
-              const count = discussions.filter((discussion) => discussion.category === category).length
-              return (
-                <button
-                  type="button"
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`chip-filter ${selectedCategory === category ? 'chip-filter-active' : 'chip-filter-idle'}`}
-                >
-                  {getCategoryLabel(category)} ({count})
-                </button>
-              )
-            })}
-            <button
-              type="button"
-              onClick={() => setShowHotOnly((prev) => !prev)}
-              className={`chip-filter ${showHotOnly ? 'chip-filter-active' : 'chip-filter-idle'}`}
-            >
-              인기글만
-            </button>
+      <section className="page-panel space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">전체 토론</span>
+              <span className="page-summary-value">{discussions.length}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">인기글</span>
+              <span className="page-summary-value">{hotDiscussionCount}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">카테고리 결과</span>
+              <span className="page-summary-value">{activeCategoryCount}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">현재 표시</span>
+              <span className="page-summary-value">{filteredDiscussions.length}</span>
+            </div>
           </div>
 
           <div className="page-toolbar-cluster">
@@ -197,11 +166,42 @@ export function CommunityDiscussion({
               className="glass-inline-button"
             >
               <Plus className="h-4 w-4" />
-              새 글
+              {showComposer ? '작성 닫기' : '새 글'}
             </button>
           </div>
         </div>
-        <div className="page-toolbar-row">
+
+        <div className="action-row action-row-scroll">
+          <button
+            type="button"
+            onClick={() => setSelectedCategory('All')}
+            className={`chip-filter ${selectedCategory === 'All' ? 'chip-filter-active' : 'chip-filter-idle'}`}
+          >
+            전체 ({discussions.length})
+          </button>
+          {DISCUSSION_CATEGORIES.map((category) => {
+            const count = discussions.filter((discussion) => discussion.category === category).length
+            return (
+              <button
+                type="button"
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                className={`chip-filter ${selectedCategory === category ? 'chip-filter-active' : 'chip-filter-idle'}`}
+              >
+                {getCategoryLabel(category)} ({count})
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => setShowHotOnly((prev) => !prev)}
+            className={`chip-filter ${showHotOnly ? 'chip-filter-active' : 'chip-filter-idle'}`}
+          >
+            인기글만
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="page-toolbar-cluster">
             <div className="page-toggle-cluster">
               <button
@@ -240,7 +240,7 @@ export function CommunityDiscussion({
               </button>
             </div>
           </div>
-          <span className="page-toolbar-note">총 {filteredDiscussions.length}개 글</span>
+          <span className="page-toolbar-note">총 {filteredDiscussions.length}개 글을 현재 조건으로 보고 있습니다.</span>
         </div>
 
         {showComposer ? (
@@ -315,11 +315,16 @@ export function CommunityDiscussion({
                   {discussion.author} · {discussion.department} · {discussion.createdAt}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {discussion.tags.map((tag) => (
+                  {discussion.tags.slice(0, 3).map((tag) => (
                     <OpalTag key={tag} size="sm" variant="primary">
                       {tag}
                     </OpalTag>
                   ))}
+                  {discussion.tags.length > 3 ? (
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">
+                      +{discussion.tags.length - 3}
+                    </span>
+                  ) : null}
                 </div>
               </div>
 

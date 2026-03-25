@@ -458,15 +458,15 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.12),transparent_24%),linear-gradient(180deg,#f8fbff_0%,#eff4fb_42%,#f4f7fb_100%)] px-4 py-8 text-slate-900">
-        <div className="mx-auto max-w-5xl">
+      <div className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900">
+        <div className="mx-auto max-w-4xl">
           <button type="button" onClick={onNavigateHome} className="glass-inline-button">
             <ArrowLeft className="h-4 w-4" />
             홈으로 돌아가기
           </button>
 
-          <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-            <div className="page-header-card">
+          <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className="page-panel">
               <p className="page-header-eyebrow">JB Hub Admin</p>
               <h1 className="mt-4 text-4xl font-black tracking-[-0.05em] text-slate-950">운영 전용 관리자 페이지</h1>
               <p className="mt-3 max-w-2xl text-sm text-slate-600">
@@ -479,7 +479,7 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
               </div>
             </div>
 
-            <div className="page-panel-lg">
+            <div className="page-panel">
               <h2 className="text-2xl font-black">로그인</h2>
               <div className="mt-5 space-y-3">
                 <input
@@ -513,7 +513,7 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.12),transparent_24%),linear-gradient(180deg,#f8fbff_0%,#eff4fb_42%,#f4f7fb_100%)] text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       <PlatformFrame
         brandMark={<img src="/Logo.png" alt="" className="platform-brand-image" />}
         brandEyebrow="운영"
@@ -522,6 +522,7 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
         navigationSections={navigationSections}
         activeNavigationId={tab}
         onSelectNavigation={setTab}
+        headerVariant="simple"
         headerEyebrow="운영 관리자 콘솔"
         headerTitle={activeTabMeta.label}
         headerDescription={activeTabMeta.description}
@@ -534,53 +535,67 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
         }
         headerMeta={
           <>
-            <Pill variant="subtle">세션 {session.username}</Pill>
-            <Pill variant="subtle">권한 {formatRole(session.role)}</Pill>
-            <Pill variant="subtle">프로젝트 {stats?.totalProjects ?? 0}</Pill>
-            <Pill variant="subtle">배포 {stats?.totalDeployments ?? 0}</Pill>
-            <Pill variant="subtle">이미지 {services?.runtime.imageCount ?? 0}</Pill>
+            <Pill variant="subtle">Session {session.username}</Pill>
+            <Pill variant="subtle">Role {formatRole(session.role)}</Pill>
+            <Pill variant="subtle">Health {health?.status ?? '-'}</Pill>
           </>
         }
         sidebarLead={
-          <div className="space-y-3">
-            <div className="platform-context-card">
-              <p className="platform-context-eyebrow">운영 세션</p>
+          <div className="platform-context-card space-y-2">
+            <div>
+              <p className="platform-context-eyebrow">Admin session</p>
               <p className="platform-context-title">{session.username}</p>
-              <p className="platform-context-copy">권한 {formatRole(session.role)} · 현재 상태 {health?.status ?? '확인 중'}</p>
+              <p className="platform-context-copy">{activeTabMeta.label}</p>
             </div>
-            <div className="platform-context-card">
-              <p className="platform-context-eyebrow">선택한 메뉴</p>
-              <p className="platform-context-title">{activeTabMeta.label}</p>
-              <p className="platform-context-copy">{activeTabMeta.description}</p>
+            <div className="space-y-1 text-xs leading-5 text-slate-600">
+              <p>Role {formatRole(session.role)}</p>
+              <p>Health {health?.status ?? '-'}</p>
+              <p>{activeTabMeta.description}</p>
             </div>
           </div>
         }
         sidebarFooter={
-          <div className="space-y-3">
-            <div className="platform-mini-stat-grid">
-              <div className="platform-mini-stat"><p className="platform-mini-stat-label">계정</p><p className="platform-mini-stat-value">{users.length}</p></div>
-              <div className="platform-mini-stat"><p className="platform-mini-stat-label">문구</p><p className="platform-mini-stat-value">{contentEntries.length}</p></div>
-              <div className="platform-mini-stat"><p className="platform-mini-stat-label">백업</p><p className="platform-mini-stat-value">{backups.length}</p></div>
-            </div>
-            <div className="platform-context-card">
-              <p className="platform-context-eyebrow">운영 메모</p>
-              <p className="platform-context-copy">배포 로그 확인, 이미지 삭제, 문구 수정 결과는 이 콘솔에서 바로 반영됩니다.</p>
+          <div className="platform-context-card space-y-2">
+            <p className="platform-context-eyebrow">Overview</p>
+            <div className="space-y-1 text-xs leading-5 text-slate-600">
+              <p>Accounts {users.length} · Content {contentEntries.length} · Backups {backups.length}</p>
+              <p>Projects {stats?.totalProjects ?? 0} · Deployments {stats?.totalDeployments ?? 0}</p>
+              <p>Logs, backups, and content changes can all be checked from the current console.</p>
             </div>
           </div>
         }
       >
         {tab === 'overview' ? (
           <div className="admin-tab-shell">
-            <div className="dashboard-panel-grid md:grid-cols-2 xl:grid-cols-5">
-              <div className="dashboard-stat-card"><p className="dashboard-stat-label">API</p><p className="dashboard-stat-value">{health?.status || '-'}</p></div>
-              <div className="dashboard-stat-card"><p className="dashboard-stat-label">DB</p><p className="dashboard-stat-value">{String((health?.checks as Record<string, { status?: string }> | undefined)?.database?.status || '-')}</p></div>
-              <div className="dashboard-stat-card"><p className="dashboard-stat-label">Docker</p><p className="dashboard-stat-value">{services?.runtime.dockerVersion || '-'}</p></div>
-              <div className="dashboard-stat-card"><p className="dashboard-stat-label">이미지</p><p className="dashboard-stat-value">{services?.runtime.imageCount ?? 0}</p></div>
-              <div className="dashboard-stat-card"><p className="dashboard-stat-label">컨테이너</p><p className="dashboard-stat-value">{services?.runtime.hostContainerCount ?? 0}</p></div>
+            <div className="page-panel">
+              <div className="page-summary-strip">
+                <div className="page-summary-item">
+                  <span className="page-summary-label">API</span>
+                  <span className="page-summary-value">{health?.status || '-'}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">DB</span>
+                  <span className="page-summary-value">
+                    {String((health?.checks as Record<string, { status?: string }> | undefined)?.database?.status || '-')}
+                  </span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">Docker</span>
+                  <span className="page-summary-value">{services?.runtime.dockerVersion || '-'}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">이미지</span>
+                  <span className="page-summary-value">{services?.runtime.imageCount ?? 0}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">컨테이너</span>
+                  <span className="page-summary-value">{services?.runtime.hostContainerCount ?? 0}</span>
+                </div>
+              </div>
             </div>
 
             <div className="dashboard-panel-grid-wide">
-              <div className="page-panel-lg">
+              <div className="page-panel">
                 <h2 className="text-lg font-bold">배포 현황</h2>
                 <div className="mt-4 space-y-3">
                   {services?.deployments.map((deployment) => (
@@ -609,12 +624,12 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
               </div>
 
               <div className="space-y-4">
-                <div className="page-panel-lg">
+                <div className="page-panel">
                   <h2 className="text-lg font-bold">배포 로그</h2>
                   <pre className="mt-4 max-h-[28rem] overflow-auto rounded-2xl bg-slate-950 px-4 py-4 text-xs text-slate-100">{selectedLogs || '배포를 선택하면 로그가 여기에 표시됩니다.'}</pre>
                 </div>
 
-                <div className="page-panel-lg">
+                <div className="page-panel">
                   <h2 className="text-lg font-bold">업로드된 이미지</h2>
                   <div className="mt-4 space-y-3">
                     {services?.images.map((image) => (
@@ -634,15 +649,32 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
 
         {tab === 'projects' ? (
           <div className="admin-tab-shell">
-            <div className="page-panel-lg">
+            <div className="page-panel space-y-4">
+              <div className="page-summary-strip">
+                <div className="page-summary-item">
+                  <span className="page-summary-label">전체 프로젝트</span>
+                  <span className="page-summary-value">{projects.length}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">표시 결과</span>
+                  <span className="page-summary-value">{filteredProjects.length}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">총 배포</span>
+                  <span className="page-summary-value">{stats?.totalDeployments ?? 0}</span>
+                </div>
+              </div>
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_12rem]">
                 <input value={search} onChange={(event) => setSearch(event.target.value)} className="form-input-soft" placeholder="프로젝트 검색" />
                 <div className="inline-flex items-center justify-center rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold">결과 {filteredProjects.length}개</div>
               </div>
             </div>
 
-            <div className="page-panel-lg">
-              <h2 className="text-lg font-bold">프로젝트 생성</h2>
+            <details className="page-panel">
+              <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+                프로젝트 생성 열기
+              </summary>
+              <p className="mt-2 text-xs leading-5 text-slate-500">필요할 때만 새 프로젝트 등록 폼을 펼치도록 정리했습니다.</p>
               <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 <input value={createProjectForm.title} onChange={(event) => setCreateProjectForm((current) => ({ ...current, title: event.target.value }))} className="form-input-soft" placeholder="제목" />
                 <input value={createProjectForm.author} onChange={(event) => setCreateProjectForm((current) => ({ ...current, author: event.target.value }))} className="form-input-soft" placeholder="작성자" />
@@ -651,10 +683,10 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
                 <textarea value={createProjectForm.description} onChange={(event) => setCreateProjectForm((current) => ({ ...current, description: event.target.value }))} className="form-textarea-soft lg:col-span-2" placeholder="설명" />
               </div>
               <div className="mt-4"><OpalButton variant="primary" size="sm" onClick={() => void handleCreateProject()} icon={<Plus className="h-4 w-4" />}>프로젝트 생성</OpalButton></div>
-            </div>
+            </details>
 
             {filteredProjects.map((project) => (
-              <div key={project.id} className="page-panel-lg">
+              <div key={project.id} className="page-panel">
                 {editProjectId === project.id ? (
                   <div className="grid gap-3 lg:grid-cols-2">
                     <input value={editProjectForm.title} onChange={(event) => setEditProjectForm((current) => ({ ...current, title: event.target.value }))} className="form-input-soft" />
@@ -680,8 +712,28 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
 
         {tab === 'accounts' ? (
           <div className="admin-tab-shell">
-            <div className="page-panel-lg">
-              <h2 className="text-lg font-bold">관리자 계정 생성</h2>
+            <div className="page-panel">
+              <div className="page-summary-strip">
+                <div className="page-summary-item">
+                  <span className="page-summary-label">전체 계정</span>
+                  <span className="page-summary-value">{users.length}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">활성 계정</span>
+                  <span className="page-summary-value">{users.filter((user) => user.is_active).length}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">권한 유형</span>
+                  <span className="page-summary-value">3</span>
+                </div>
+              </div>
+            </div>
+
+            <details className="page-panel">
+              <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+                관리자 계정 생성 열기
+              </summary>
+              <p className="mt-2 text-xs leading-5 text-slate-500">계정 생성은 기본으로 접어 두고, 운영 목록을 먼저 확인할 수 있게 했습니다.</p>
               <div className="mt-4 grid gap-3 lg:grid-cols-4">
                 <input value={createUserForm.username} onChange={(event) => setCreateUserForm((current) => ({ ...current, username: event.target.value }))} className="form-input-soft" placeholder="아이디" />
                 <input value={createUserForm.email} onChange={(event) => setCreateUserForm((current) => ({ ...current, email: event.target.value }))} className="form-input-soft" placeholder="이메일" />
@@ -689,10 +741,10 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
                 <select value={createUserForm.role} onChange={(event) => setCreateUserForm((current) => ({ ...current, role: event.target.value as AdminRole }))} className="form-select-soft"><option value="super_admin">super_admin</option><option value="admin">admin</option><option value="moderator">moderator</option></select>
               </div>
               <div className="mt-4"><OpalButton variant="primary" size="sm" onClick={() => void handleCreateUser()} icon={<UserPlus className="h-4 w-4" />}>계정 생성</OpalButton></div>
-            </div>
+            </details>
 
             {users.map((user) => (
-              <div key={user.id} className="page-panel-lg">
+              <div key={user.id} className="page-panel">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div><p className="font-semibold">{user.username}</p><p className="text-sm text-slate-600">{user.email}</p><p className="mt-1 text-xs text-slate-500">생성 {formatDate(user.created_at)} · 최근 로그인 {formatDate(user.last_login_at)}</p></div>
                   <div className="flex flex-wrap gap-2">
@@ -708,8 +760,25 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
 
         {tab === 'content' ? (
           <div className="admin-tab-shell">
+            <div className="page-panel flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="page-summary-strip">
+                <div className="page-summary-item">
+                  <span className="page-summary-label">관리 항목</span>
+                  <span className="page-summary-value">{contentEntries.length}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">긴 문구</span>
+                  <span className="page-summary-value">{contentEntries.filter((entry) => entry.isMultiline).length}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">짧은 문구</span>
+                  <span className="page-summary-value">{contentEntries.filter((entry) => !entry.isMultiline).length}</span>
+                </div>
+              </div>
+              <OpalButton variant="primary" size="sm" onClick={() => void handleSaveContent()} icon={<Save className="h-4 w-4" />}>문구 저장</OpalButton>
+            </div>
             {contentEntries.map((entry) => (
-              <div key={entry.key} className="page-panel-lg">
+              <div key={entry.key} className="page-panel">
                 <p className="font-semibold">{entry.label}</p>
                 <p className="mt-1 text-xs text-slate-500">{entry.description}</p>
                 {entry.isMultiline ? (
@@ -719,18 +788,31 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
                 )}
               </div>
             ))}
-            <div className="flex justify-end"><OpalButton variant="primary" size="sm" onClick={() => void handleSaveContent()} icon={<Save className="h-4 w-4" />}>문구 저장</OpalButton></div>
           </div>
         ) : null}
 
         {tab === 'audit' ? (
           <div className="admin-tab-shell">
-            <div className="page-panel-lg">
+            <div className="page-panel space-y-4">
               <div className="flex items-center justify-between">
                 <div><h2 className="text-lg font-bold">백업</h2><p className="text-sm text-slate-500">운영 데이터를 백업하고 내려받을 수 있습니다.</p></div>
                 <OpalButton variant="primary" size="sm" onClick={() => void handleCreateBackup()} icon={<Plus className="h-4 w-4" />}>백업 생성</OpalButton>
               </div>
-              <div className="mt-4 space-y-3">
+              <div className="page-summary-strip">
+                <div className="page-summary-item">
+                  <span className="page-summary-label">백업 수</span>
+                  <span className="page-summary-value">{backups.length}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">감사 로그</span>
+                  <span className="page-summary-value">{auditLogs.length}</span>
+                </div>
+                <div className="page-summary-item">
+                  <span className="page-summary-label">상태</span>
+                  <span className="page-summary-value">{health?.status ?? '-'}</span>
+                </div>
+              </div>
+              <div className="space-y-3">
                 {backups.map((backup) => (
                   <div key={backup.id} className="admin-list-card">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -742,7 +824,7 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
               </div>
             </div>
 
-            <div className="page-panel-lg">
+            <div className="page-panel">
               <h2 className="text-lg font-bold">감사 로그</h2>
               <div className="mt-4 space-y-3">
                 {auditLogs.map((log) => (

@@ -8,7 +8,7 @@ import {
   Sparkles,
   TrendingUp,
 } from 'lucide-react'
-import { MetricCard, PageHeader, PageShell, Pill } from '../common'
+import { PageHeader, PageShell, Pill } from '../common'
 import { OpalCard } from '../opal/OpalCard'
 import { getBookmarkedIds, getRecentlyViewed } from './UserBookmarks'
 
@@ -193,52 +193,46 @@ export function UserDashboard({
     [stats],
   )
 
-  const summaryMetrics = [
-    { key: 'views', label: '누적 조회 수', value: stats?.totalViews.toLocaleString() ?? '0' },
-    { key: 'bookmarks', label: '즐겨찾기 프로젝트', value: stats?.totalBookmarks ?? 0 },
-    { key: 'departments', label: '탐색한 부서 수', value: stats?.totalDepartments ?? 0 },
-    { key: 'recent', label: '최근 본 항목', value: recentActivities.length },
-  ]
-
   return (
     <PageShell density="compact" topInset={showHeader ? 'default' : 'none'}>
       {showHeader ? (
         <PageHeader
+          variant="simple"
           eyebrow={
             <>
               <Activity className="h-3.5 w-3.5" />
               Personal Dashboard
             </>
           }
-          title="개인 대시보드"
-          description="최근 탐색 흐름, 즐겨찾기, 자주 보는 주제를 같은 레이아웃 안에서 빠르게 확인할 수 있도록 정리한 개인 업무 보드입니다."
-          meta={
-            <>
-              <Pill variant="subtle">활동 상태: {stats?.recentlyActive ? '활성' : '시작 전'}</Pill>
-              <Pill variant="subtle">프로젝트 수 {stats?.totalProjects ?? projects.length}</Pill>
-              <Pill variant="subtle">즐겨찾기 {stats?.totalBookmarks ?? 0}</Pill>
-            </>
-          }
+        title="개인 대시보드"
+        description="최근 탐색 흐름, 즐겨찾기, 자주 보는 주제를 같은 레이아웃 안에서 빠르게 확인할 수 있도록 정리한 개인 업무 보드입니다."
         />
       ) : null}
 
-      <section className="page-metric-grid">
-        {summaryMetrics.map((metric) => (
-          <MetricCard key={metric.key} label={metric.label} value={metric.value} />
-        ))}
-      </section>
-
-      <section className="page-toolbar-panel page-toolbar-stack">
-        <div className="page-toolbar-row">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">빠른 이동</h2>
-            <p className="page-toolbar-note">
-              자주 여는 화면을 같은 카드 스타일로 정리해 두었습니다. 필요한 영역으로 바로 이동해도 흐름이 끊기지 않도록 맞췄습니다.
-            </p>
+      <section className="page-panel space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">누적 조회 수</span>
+              <span className="page-summary-value">{stats?.totalViews.toLocaleString() ?? '0'}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">즐겨찾기 프로젝트</span>
+              <span className="page-summary-value">{stats?.totalBookmarks ?? 0}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">탐색한 부서 수</span>
+              <span className="page-summary-value">{stats?.totalDepartments ?? 0}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">최근 본 항목</span>
+              <span className="page-summary-value">{recentActivities.length}</span>
+            </div>
           </div>
-          <span className="page-toolbar-note">최근 활동 {recentActivities.length}건 기준</span>
+          <span className="page-toolbar-note">최근 활동 {recentActivities.length}건 기준으로 자주 여는 화면만 빠르게 모아두었습니다.</span>
         </div>
-        <div className="page-card-grid">
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           {QUICK_LINKS.map((link) => {
             const Icon = link.icon
 
@@ -247,7 +241,7 @@ export function UserDashboard({
                 key={link.id}
                 type="button"
                 onClick={() => onNavigateToPage?.(link.id)}
-                className="page-panel text-left transition hover:-translate-y-0.5 hover:border-slate-300"
+                className="rounded-3xl border border-slate-200/85 bg-white/92 p-4 text-left transition hover:border-slate-300 hover:bg-white"
               >
                 <div className="flex items-start gap-3">
                   <span className="project-section-icon">
@@ -364,7 +358,7 @@ export function UserDashboard({
         </section>
       )}
 
-      <section className="page-panel-lg">
+      <section className="page-panel">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">관심 태그</h2>

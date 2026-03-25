@@ -4,7 +4,7 @@ import type { Project } from '../lib/project-utils'
 import { ProjectDockerTab } from './ProjectDockerTab'
 import { ProjectRepositoryTab } from './ProjectRepositoryTab'
 import { QuietTabs } from './QuietTabs'
-import { MarkdownContent, MetricCard, PageHeader, PageShell, Pill } from './common'
+import { MarkdownContent, PageHeader, PageShell, Pill } from './common'
 import { OpalButton } from './opal/OpalButton'
 import { OpalCard } from './opal/OpalCard'
 import { OpalProjectCard } from './opal/OpalProjectCard'
@@ -145,6 +145,7 @@ export function QuietProjectDetail({
 }: QuietProjectDetailProps) {
   const detailProject = useMemo(() => toDetailProject(project), [project])
   const relatedDetailProjects = useMemo(() => relatedProjects.map((item) => toDetailProject(item)), [relatedProjects])
+  const visibleRelatedProjects = useMemo(() => relatedDetailProjects.slice(0, 2), [relatedDetailProjects])
   const [activeTab, setActiveTab] = useState('overview')
   const [commentInput, setCommentInput] = useState('')
   const [comments, setComments] = useState<LocalComment[]>(() => readStoredComments(detailProject))
@@ -227,6 +228,44 @@ export function QuietProjectDetail({
             >
               {isFavorite ? '즐겨찾기됨' : '즐겨찾기 추가'}
             </OpalButton>
+          </>
+        }
+      />
+
+      <section className="page-panel space-y-4">
+        <div className="page-summary-strip">
+          <div className="page-summary-item">
+            <span className="page-summary-label">트렌드</span>
+            <span className="page-summary-value">{trendLabel}</span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">영향도</span>
+            <span className="page-summary-value">{impactLevel}</span>
+          </div>
+          <div className="page-summary-item">
+            <span className="page-summary-label">운영 점수</span>
+            <span className="page-summary-value">{qualityScore}</span>
+          </div>
+        </div>
+        <MarkdownContent markdown={detailProject.description} variant="hero" />
+        {detailProject.tags && detailProject.tags.length > 0 ? (
+          <div className="page-tag-cloud">
+            {detailProject.tags.slice(0, 3).map((tag) => (
+              <Pill key={tag} variant="subtle">{tag}</Pill>
+            ))}
+            {detailProject.tags.length > 3 ? <Pill variant="subtle">+{detailProject.tags.length - 3}</Pill> : null}
+          </div>
+        ) : null}
+        <details className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3">
+          <summary className="cursor-pointer list-none text-sm font-medium text-slate-700 [&::-webkit-details-marker]:hidden">
+            보조 작업 열기
+          </summary>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {onShare ? (
+              <OpalButton variant="secondary" size="sm" icon={<Link2 className="h-4 w-4" />} onClick={onShare}>
+                공유
+              </OpalButton>
+            ) : null}
             <OpalButton
               variant="secondary"
               size="sm"
@@ -235,59 +274,52 @@ export function QuietProjectDetail({
             >
               JSON 내보내기
             </OpalButton>
-            <OpalButton variant="secondary" size="sm" icon={<Link2 className="h-4 w-4" />} onClick={onShare}>
-              공유
-            </OpalButton>
-          </>
-        }
-        meta={
-          <>
-            <Pill variant="subtle">트렌드 {trendLabel}</Pill>
-            <Pill variant="subtle">영향도 {impactLevel}</Pill>
-            <Pill variant="subtle">운영 점수 {qualityScore}</Pill>
-            <Pill variant="subtle">
-              현재 탭 {DETAIL_TABS.find((tab) => tab.id === activeTab)?.label ?? activeTab}
-            </Pill>
-          </>
-        }
-      />
-
-      <section className="page-panel-lg">
-        <MarkdownContent markdown={detailProject.description} variant="hero" />
+          </div>
+        </details>
       </section>
 
       <QuietTabs tabs={DETAIL_TABS} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === 'overview' ? (
-        <section className="space-y-6">
-          <section className="page-metric-grid">
-            <MetricCard label="스타" value={detailProject.stars} />
-            <MetricCard label="포크" value={detailProject.forks} />
-            <MetricCard label="댓글" value={detailProject.comments} />
-            <MetricCard label="조회수" value={detailProject.views.toLocaleString()} />
+        <section className="space-y-4">
+          <section className="page-panel">
+            <div className="page-summary-strip">
+              <div className="page-summary-item">
+                <span className="page-summary-label">스타</span>
+                <span className="page-summary-value">{detailProject.stars}</span>
+              </div>
+              <div className="page-summary-item">
+                <span className="page-summary-label">포크</span>
+                <span className="page-summary-value">{detailProject.forks}</span>
+              </div>
+              <div className="page-summary-item">
+                <span className="page-summary-label">댓글</span>
+                <span className="page-summary-value">{detailProject.comments}</span>
+              </div>
+              <div className="page-summary-item">
+                <span className="page-summary-label">조회수</span>
+                <span className="page-summary-value">{detailProject.views.toLocaleString()}</span>
+              </div>
+            </div>
           </section>
 
-          <OpalCard padding="comfortable" elevation="minimal">
-            <div className="space-y-3">
-              <h2 className="text-xl font-semibold text-slate-900">프로젝트 요약</h2>
-              <p className="text-sm leading-6 text-slate-600">
-                이 프로젝트는 {detailProject.department}에서 운영 중이며, 현재 품질 점수는 {qualityScore}점,
-                영향도는 {impactLevel} 수준입니다. 파일과 컨테이너 탭에서 운영 자산과 실행 상태를 바로 확인할 수 있습니다.
-              </p>
-              {detailProject.tags && detailProject.tags.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {detailProject.tags.map((tag) => (
-                    <Pill key={tag} variant="subtle">{tag}</Pill>
-                  ))}
-                </div>
+          <section className="page-panel space-y-3">
+            <h2 className="text-xl font-semibold text-slate-900">프로젝트 요약</h2>
+            <p className="text-sm leading-6 text-slate-600">
+              이 프로젝트는 {detailProject.department}에서 운영 중이며, 현재 품질 점수는 {qualityScore}점,
+              영향도는 {impactLevel} 수준입니다. 파일과 컨테이너 탭에서 운영 자산과 실행 상태를 바로 확인할 수 있습니다.
+            </p>
+          </section>
+
+          <section className="page-panel space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold text-slate-900">연관 프로젝트</h2>
+              {relatedDetailProjects.length > visibleRelatedProjects.length ? (
+                <span className="page-toolbar-note">+{relatedDetailProjects.length - visibleRelatedProjects.length} more</span>
               ) : null}
             </div>
-          </OpalCard>
-
-          <div className="space-y-3">
-            <h2 className="text-xl font-semibold text-slate-900">연관 프로젝트</h2>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
-              {relatedDetailProjects.map((related) => (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {visibleRelatedProjects.map((related) => (
                 <OpalProjectCard key={related.id} {...related} onClick={() => onOpenProject(related.id)} />
               ))}
               {relatedDetailProjects.length === 0 ? (
@@ -296,7 +328,7 @@ export function QuietProjectDetail({
                 </div>
               ) : null}
             </div>
-          </div>
+          </section>
         </section>
       ) : null}
 
@@ -318,8 +350,37 @@ export function QuietProjectDetail({
       ) : null}
 
       {activeTab === 'metrics' ? (
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <OpalCard padding="comfortable" elevation="minimal">
+        <section className="space-y-4">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">조회수</span>
+              <span className="page-summary-value">{detailProject.views.toLocaleString()}회</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">관심도</span>
+              <span className="page-summary-value">{impactLevel}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">협업 흔적</span>
+              <span className="page-summary-value">
+                스타 {detailProject.stars} · 포크 {detailProject.forks}
+              </span>
+            </div>
+          </div>
+
+          <div className="page-panel space-y-2">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-slate-700" />
+              <h3 className="text-base font-semibold text-slate-900">활용 요약</h3>
+            </div>
+            <p className="text-sm text-slate-600">
+              조회수, 스타, 댓글 흐름을 같이 보면 현재 관심도와 운영 리듬을 빠르게 읽을 수 있습니다. 지금은 {impactLevel}
+              수준으로 유지되고 있습니다.
+            </p>
+          </div>
+
+          <div className="hidden grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <OpalCard padding="comfortable" elevation="minimal">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-slate-700" />
               <h3 className="text-lg font-semibold text-slate-900">활용 신호</h3>
@@ -330,7 +391,7 @@ export function QuietProjectDetail({
             </p>
           </OpalCard>
 
-          <OpalCard padding="comfortable" elevation="minimal">
+            <OpalCard padding="comfortable" elevation="minimal">
             <div className="flex items-center gap-2">
               <GitFork className="h-5 w-5 text-slate-700" />
               <h3 className="text-lg font-semibold text-slate-900">운영 메모</h3>
@@ -338,13 +399,33 @@ export function QuietProjectDetail({
             <p className="mt-2 text-sm text-slate-600">
               포크, 댓글, 파일 변경 이력을 함께 확인하면 운영 난이도와 협업 빈도를 빠르게 파악할 수 있습니다.
             </p>
-          </OpalCard>
+            </OpalCard>
+          </div>
         </section>
       ) : null}
 
       {activeTab === 'comments' ? (
         <section className="space-y-4">
-          <form onSubmit={handleCommentSubmit} className="surface-panel rounded-2xl p-4">
+          <div className="page-summary-strip">
+            <div className="page-summary-item">
+              <span className="page-summary-label">댓글 수</span>
+              <span className="page-summary-value">{comments.length}개</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">작성자</span>
+              <span className="page-summary-value">{currentUserName}</span>
+            </div>
+            <div className="page-summary-item">
+              <span className="page-summary-label">저장 방식</span>
+              <span className="page-summary-value">로컬 저장</span>
+            </div>
+          </div>
+
+          <form onSubmit={handleCommentSubmit} className="page-panel space-y-3">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-slate-900">짧은 운영 메모 남기기</h3>
+              <p className="text-sm text-slate-600">지금 필요한 확인 사항이나 다음 작업만 간단히 적어두면 됩니다.</p>
+            </div>
             <div className="space-y-3">
               <textarea
                 value={commentInput}
@@ -363,13 +444,13 @@ export function QuietProjectDetail({
 
           <div className="space-y-3">
             {comments.map((comment) => (
-              <OpalCard key={comment.id} padding="comfortable" elevation="minimal">
+              <div key={comment.id} className="page-panel space-y-1">
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-slate-900">{comment.author}</p>
                   <p className="text-xs text-slate-500">{comment.createdAt}</p>
                   <p className="pt-1 text-sm text-slate-700">{comment.message}</p>
                 </div>
-              </OpalCard>
+              </div>
             ))}
             {comments.length === 0 ? (
               <div className="empty-panel">
@@ -378,7 +459,7 @@ export function QuietProjectDetail({
             ) : null}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-600">
+          <div className="hidden rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-600">
             <span className="inline-flex items-center gap-1">
               <MessageSquare className="h-3.5 w-3.5" />
               댓글은 현재 브라우저 로컬 저장소에 저장됩니다.

@@ -1085,26 +1085,24 @@ export default function RestoredHubApp({
         activeNavigationId={activeNavigationId}
         onSelectNavigation={navigateToPage}
         sidebarLead={
-          <div className="platform-context-card">
-            <p className="platform-context-eyebrow">현재 보기</p>
-            <p className="platform-context-title">{currentContextTitle}</p>
-            <p className="platform-context-copy">{currentContextCopy}</p>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1">{currentUser.name}</span>
-              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1">
-                {currentUser.department}
-              </span>
-              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1">
-                {currentUser.role === 'admin' ? '관리자' : '멤버'}
-              </span>
-              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1">
-                {userSettings.language === 'en' ? 'English' : '한국어'}
-              </span>
+          <div className="platform-context-card space-y-2">
+            <div>
+              <p className="platform-context-eyebrow">현재 보기</p>
+              <p className="platform-context-title">{currentContextTitle}</p>
+              <p className="platform-context-copy">{currentContextCopy}</p>
+            </div>
+            <div className="space-y-1 text-xs leading-5 text-slate-600">
+              <p>
+                {currentUser.name} · {currentUser.department}
+              </p>
+              <p>
+                {currentUser.role === 'admin' ? '관리자' : '멤버'} · {userSettings.language === 'en' ? 'English' : '한국어'}
+              </p>
             </div>
           </div>
         }
         sidebarFooter={
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <div className="platform-sidebar-actions">
               <button
                 type="button"
@@ -1114,7 +1112,7 @@ export default function RestoredHubApp({
                 <Plus className="h-4 w-4" />
                 프로젝트 생성
               </button>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <div className="grid gap-2">
                 <button type="button" onClick={() => void loadProjects()} className="glass-inline-button w-full justify-center">
                   <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                   새로고침
@@ -1137,7 +1135,7 @@ export default function RestoredHubApp({
                 ) : null}
               </div>
             </div>
-            <p className="text-xs leading-5 text-slate-500">세부 필터와 화면별 제어는 각 페이지 상단에서 바로 조절할 수 있어요.</p>
+            <p className="text-[11px] leading-5 text-slate-500">자주 쓰는 작업만 남기고 나머지 제어는 각 화면 안에서 바로 조절할 수 있게 정리했습니다.</p>
           </div>
         }
       >
