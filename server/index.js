@@ -10,6 +10,7 @@ import path from 'node:path'
 import mysql from 'mysql2/promise'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
+import { attachAirgapBuildRoutes } from './airgap-builds.js'
 import { seedProjects } from './seed-projects.js'
 import { ensureRuntimeLayout, PROJECT_FILES_ROOT, UPLOAD_TEMP_DIR } from './runtime-paths.js'
 import {
@@ -4745,6 +4746,9 @@ async function start() {
 
   // Insights router
   v1Router.use('/', createInsightsRouter(pool))
+  const airgapBuildRuntime = attachAirgapBuildRoutes(app, {
+    routePrefix: '/api/v1',
+  })
 
   // Mount v1 API
   app.use('/api/v1', v1Router)
@@ -4809,6 +4813,7 @@ async function start() {
 
   const shutdown = async () => {
     console.log('[api] shutting down gracefully...')
+    airgapBuildRuntime?.stop?.()
 
     // Clean up rate limiter intervals
     if (createRateLimiter.cleanupIntervals) {

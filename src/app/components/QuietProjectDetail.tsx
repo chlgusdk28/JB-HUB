@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Download, GitFork, Link2, MessageSquare, Send, Star, TrendingUp } from 'lucide-react'
 import type { Project } from '../lib/project-utils'
+import { ProjectAirgapBuildTab } from './ProjectAirgapBuildTab'
 import { ProjectDockerTab } from './ProjectDockerTab'
 import { ProjectRepositoryTab } from './ProjectRepositoryTab'
 import { QuietTabs } from './QuietTabs'
@@ -46,6 +47,7 @@ interface DetailProject {
 const DETAIL_TABS = [
   { id: 'overview', label: '개요' },
   { id: 'repository', label: 'Repository' },
+  { id: 'builds', label: 'Airgap Build' },
   { id: 'containers', label: 'Container' },
   { id: 'metrics', label: '지표' },
   { id: 'comments', label: '댓글' },
@@ -337,6 +339,14 @@ export function QuietProjectDetail({
           projectId={detailProject.id}
           currentUserName={currentUserName}
           projectAuthor={detailProject.author}
+          canManage={canManageFiles}
+        />
+      ) : null}
+
+      {activeTab === 'builds' ? (
+        <ProjectAirgapBuildTab
+          projectId={detailProject.id}
+          currentUserName={currentUserName}
           canManage={canManageFiles}
         />
       ) : null}

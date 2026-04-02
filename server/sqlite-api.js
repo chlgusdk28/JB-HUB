@@ -10,6 +10,7 @@ import cors from 'cors'
 import compression from 'compression'
 import fileUpload from 'express-fileupload'
 import helmet from 'helmet'
+import { attachAirgapBuildRoutes } from './airgap-builds.js'
 import { attachProjectContainerRoutes } from './project-containers.js'
 import { createToolsRouter } from './tools-api.js'
 import { ensureRuntimeLayout, PROJECT_FILES_ROOT, SQLITE_DB_PATH, UPLOAD_TEMP_DIR } from './runtime-paths.js'
@@ -1438,6 +1439,9 @@ const containerRuntime = attachProjectContainerRoutes(app, {
   jwt,
   jwtSecret: JWT_SECRET,
 })
+const airgapBuildRuntime = attachAirgapBuildRoutes(app, {
+  routePrefix: '/api/v1',
+})
 
 if (SERVE_STATIC_DIST && existsSync(DIST_DIR) && existsSync(DIST_INDEX_PATH)) {
   app.use(express.static(DIST_DIR, { index: false, maxAge: '5m' }))
@@ -1463,6 +1467,7 @@ app.listen(API_PORT, () => {
 // 종료 시 정리
 process.on('SIGINT', () => {
   containerRuntime?.stop?.()
+  airgapBuildRuntime?.stop?.()
   db?.close()
   console.log('[sqlite-api] 데이터베이스 연결 종료')
   process.exit(0)

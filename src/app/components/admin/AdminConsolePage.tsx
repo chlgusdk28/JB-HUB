@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Download, Loader2, Pencil, Plus, RefreshCw, Save, Shield, Trash2, UserPlus } from 'lucide-react'
+import { AdminAirgapOperationsPanel } from './AdminAirgapOperationsPanel'
 import { useToast } from '../ToastProvider'
 import { OpalButton } from '../opal'
 import { Pill, PlatformFrame, type NavigationSection } from '../common'
@@ -41,7 +42,7 @@ import {
 
 const ADMIN_STORAGE_KEY = 'jbhub:admin-session'
 
-type AdminTab = 'overview' | 'projects' | 'accounts' | 'content' | 'audit'
+type AdminTab = 'overview' | 'projects' | 'accounts' | 'content' | 'audit' | 'airgap'
 
 interface Props {
   onNavigateHome: () => void
@@ -177,6 +178,10 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
       label: '로그 및 백업',
       description: '백업 생성, 감사 로그 확인, 백업 다운로드와 삭제를 처리합니다.',
     },
+    airgap: {
+      label: 'Airgap Ops',
+      description: '폐쇄망 빌드 워커, 허용 Base Image, 최근 빌드, 감사 체인을 운영자 관점에서 확인합니다.',
+    },
   }
 
   const navigationSections: NavigationSection<AdminTab>[] = [
@@ -188,6 +193,7 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
         { id: 'accounts', label: tabMeta.accounts.label, icon: <UserPlus className="h-4 w-4" />, badge: users.length },
         { id: 'content', label: tabMeta.content.label, icon: <Save className="h-4 w-4" />, badge: contentEntries.length },
         { id: 'audit', label: tabMeta.audit.label, icon: <Download className="h-4 w-4" />, badge: backups.length },
+        { id: 'airgap', label: tabMeta.airgap.label, icon: <Shield className="h-4 w-4" />, badge: stats?.totalAuditLogs ?? 0 },
       ],
     },
   ]
@@ -837,6 +843,8 @@ export default function AdminConsolePage({ onNavigateHome }: Props) {
             </div>
           </div>
         ) : null}
+
+        {tab === 'airgap' ? <AdminAirgapOperationsPanel session={session} /> : null}
       </PlatformFrame>
     </div>
   )

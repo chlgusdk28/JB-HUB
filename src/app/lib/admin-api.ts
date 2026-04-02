@@ -142,10 +142,105 @@ export interface ServiceOverview {
   hostContainers: ServiceHostContainer[]
 }
 
+export interface AirgapSystemStats {
+  totalBuilds: number
+  queuedBuilds: number
+  runningBuilds: number
+  completedBuilds: number
+  failedBuilds: number
+  activeBaseImages: number
+  auditLogCount: number
+}
+
+export interface AirgapWorkerStatus {
+  id: string
+  status: string
+  queueLength: number
+  activeBuildId: string | null
+  executorMode?: string
+  scanMode?: string
+}
+
+export interface AirgapBaseImage {
+  id: number
+  imageRef: string
+  description: string
+  active: boolean
+  addedBy: string
+  addedAt: string
+}
+
+export interface AirgapAuditLogEntry {
+  id: number
+  eventType: string
+  actorName: string
+  actorRole: string
+  targetType: string | null
+  targetId: string | null
+  detail: unknown
+  createdAt: string
+  logHash: string
+}
+
+export interface AirgapBuildSummary {
+  id: string
+  projectId: number
+  requesterName: string
+  requesterRole: string
+  status: string
+  imageName: string
+  tag: string
+  buildArgs: Record<string, string>
+  platform: string
+  description: string
+  dockerfileHash: string
+  contextSize: number
+  imageDigest: string | null
+  imageSize: number | null
+  durationSec: number | null
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+  startedAt: string | null
+  completedAt: string | null
+  dockerfilePath: string
+  files: Array<{ path: string; size: number }>
+  policyReport: {
+    findings: Array<{
+      ruleId: string
+      severity: 'BLOCK' | 'WARN'
+      lineNumber: number | null
+      line: string | null
+      message: string
+    }>
+    blocked: boolean
+    summary: {
+      blockCount: number
+      warnCount: number
+      stageCount: number
+      baseImages: string[]
+      exposedPorts: number[]
+      finalStageUser: string | null
+    }
+  }
+  scanResultId: string | null
+  duplicateOfBuildId: string | null
+  cancelRequested: boolean
+}
+
 function createAdminHeaders(session: AdminSession, extraHeaders: Record<string, string> = {}) {
   return {
     Authorization: `Bearer ${session.accessToken}`,
     'x-admin-session': session.sessionId,
+    ...extraHeaders,
+  }
+}
+
+function createAirgapHeaders(session: AdminSession, extraHeaders: Record<string, string> = {}) {
+  return {
+    ...createAdminHeaders(session),
+    'x-jb-user-name': session.username,
+    'x-jb-user-role': session.role,
     ...extraHeaders,
   }
 }
@@ -546,4 +641,98 @@ export async function downloadAdminBackup(session: AdminSession, backupId: strin
     blob,
     filename: match?.[1] || `jbhub-backup-${backupId}.sql`,
   }
+}
+
+export async function fetchAirgapSystemStats(session: AdminSession) {
+  const payload = await requestJson<{ stats?: AirgapSystemStats }>(
+    `${API_V1_BASE}/system/stats`,
+    {
+      headers: createAirgapHeaders(session),
+    },
+    'Air-gapped build statistics could not be loaded.',
+  )
+
+  return (
+    payload.stats ?? {
+      totalBuilds: 0,
+      queuedBuilds: 0,
+      runningBuilds: 0,
+      completedBuilds: 0,
+      failedBuilds: 0,
+      activeBaseImages: 0,
+      auditLogCount: 0,
+    }
+  )
+}
+
+export async function fetchAirgapWorkers(session: AdminSession) {
+  const payload = await requestJson<{ workers?: AirgapWorkerStatus[] }>(
+    `${API_V1_BASE}/system/workers`,
+    {
+      headers: createAirgapHeaders(session),
+    },
+    'Air-gapped build workers could not be loaded.',
+  )
+
+  return Array.isArray(payload.workers) ? payload.workers : []
+}
+
+export async function fetchAirgapBaseImages(session: AdminSession) {
+  const payload = await requestJson<{ baseImages?: AirgapBaseImage[] }>(
+    `${API_V1_BASE}/policies/base-images`,
+    {
+      headers: createAirgapHeaders(session),
+    },
+    'Allowed base images could not be loaded.',
+  )
+
+  return Array.isArray(payload.baseImages) ? payload.baseImages : []
+}
+
+export async function createAirgapBaseImage(
+  session: AdminSession,
+  input: { imageRef: string; description?: string },
+) {
+  const payload = await requestJson<{ baseImage?: AirgapBaseImage }>(
+    `${API_V1_BASE}/policies/base-images`,
+    {
+      method: 'POST',
+      headers: {
+        ...createAirgapHeaders(session),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    },
+    'Allowed base image could not be created.',
+  )
+
+  if (!payload.baseImage) {
+    throw new Error('Allowed base image response was empty.')
+  }
+
+  return payload.baseImage
+}
+
+export async function fetchAirgapAuditLogs(session: AdminSession, limit = 100) {
+  const payload = await requestJson<{ logs?: AirgapAuditLogEntry[] }>(
+    `${API_V1_BASE}/audit/logs?limit=${limit}`,
+    {
+      headers: createAirgapHeaders(session),
+    },
+    'Air-gapped audit logs could not be loaded.',
+  )
+
+  return Array.isArray(payload.logs) ? payload.logs : []
+}
+
+export async function fetchAirgapBuildHistory(session: AdminSession, limit = 50) {
+  const payload = await requestJson<{ builds?: AirgapBuildSummary[] }>(
+    `${API_V1_BASE}/builds?limit=${limit}`,
+    {
+      headers: createAirgapHeaders(session),
+    },
+    'Air-gapped build history could not be loaded.',
+  )
+
+  return Array.isArray(payload.builds) ? payload.builds : []
 }

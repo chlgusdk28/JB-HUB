@@ -74,6 +74,23 @@ async function copyIntoBundle(sourceRelativePath, destinationRelativePath) {
   await fs.cp(sourcePath, destinationPath, { recursive: true, force: true })
 }
 
+function getArchiveSuffix(fileName) {
+  const normalized = String(fileName ?? '').toLowerCase()
+  const knownSuffixes = ['.tar.gz', '.tar.xz', '.tar.bz2', '.tgz', '.zip', '.tar']
+  return knownSuffixes.find((suffix) => normalized.endsWith(suffix)) ?? path.extname(fileName)
+}
+
+function getCanonicalArchiveFileName(envName, fileName) {
+  const suffix = getArchiveSuffix(fileName) || ''
+  const names = {
+    APPLIANCE_IMAGE_ARCHIVE: `appliance-image-archive${suffix}`,
+    APPLIANCE_RUNTIME_ARCHIVE: `appliance-runtime-archive${suffix}`,
+    APPLIANCE_NODE_ARCHIVE: `appliance-node-archive${suffix}`,
+  }
+
+  return names[envName] ?? fileName
+}
+
 async function copyOptionalArchive(envName, destinationDir, copiedArtifacts) {
   const rawPath = String(process.env[envName] ?? '').trim()
   if (!rawPath) {
@@ -87,11 +104,13 @@ async function copyOptionalArchive(envName, destinationDir, copiedArtifacts) {
 
   await fs.mkdir(destinationDir, { recursive: true })
   const fileName = path.basename(sourcePath)
-  const destinationPath = path.join(destinationDir, fileName)
+  const canonicalFileName = getCanonicalArchiveFileName(envName, fileName)
+  const destinationPath = path.join(destinationDir, canonicalFileName)
   await fs.cp(sourcePath, destinationPath, { force: true })
   copiedArtifacts.push({
     envName,
     fileName,
+    canonicalFileName,
     relativePath: path.relative(bundleRoot, destinationPath).replace(/\\/g, '/'),
   })
 
@@ -101,11 +120,28 @@ async function copyOptionalArchive(envName, destinationDir, copiedArtifacts) {
 function buildBundleNotes() {
   return `# JB-HUB Appliance Bundle
 
-1. 이 번들은 리눅스 단일 노드 어플라이언스를 기준으로 준비되었습니다.
-2. 앱 실행은 SQLite + 정적 dist 서빙을 기본값으로 가정합니다.
-3. 컨테이너 엔진은 번들 외부 설치가 아니라 어플라이언스 내부 시스템 서비스로 붙이는 구조를 전제로 합니다.
-4. deployment/appliance/linux 아래 예시 env, systemd 서비스 파일을 기준으로 설치하세요.
-5. images/ 와 runtime/ 은 폐쇄망 반입용 엔진 패키지, 이미지 tar, Node 런타임을 채워 넣는 자리입니다.
+This bundle is prepared for a single-node offline appliance deployment.
+
+- Runtime app: \`app/server/sqlite-api.js\`
+- Static assets: \`app/dist/\`
+- Deployment templates: \`deployment/appliance/linux/\`
+- Offline payload placeholders: \`images/\` and \`runtime/\`
+
+Suggested rollout:
+
+1. Copy \`app/\` to \`/opt/jbhub/app\`.
+2. Keep \`deployment/appliance/linux/\` on the host, for example under \`/opt/jbhub/deployment/appliance/linux\`.
+3. Copy \`deployment/appliance/linux/jbhub-appliance.env.example\` to \`/etc/jbhub/jbhub-appliance.env\` and fill in production values.
+4. Register \`deployment/appliance/linux/jbhub-appliance.service\` with systemd.
+5. Use \`deployment/appliance/linux/install-appliance.sh\` for first-time installation, or \`upgrade-appliance.sh\` for in-place updates.
+6. If you want shell-based air-gapped builds, wire the wrapper scripts in \`deployment/appliance/linux/airgap-*.sh\`.
+7. Optional archives copied into \`runtime/\` and \`images/\` use canonical names such as \`appliance-node-archive.*\`.
+8. The installer copies \`runtime/\` and \`images/\` into the install root and auto-extracts \`appliance-node-archive.*\` when present.
+
+Reference docs:
+
+- \`app/docs/AIRGAP_EXECUTOR_MODES.md\`
+- \`app/docs/APPLIANCE_ARCHITECTURE.md\`
 `
 }
 
@@ -122,6 +158,7 @@ await copyIntoBundle('server', 'app/server')
 await copyIntoBundle('package.json', 'app/package.json')
 await copyIntoBundle('package-lock.json', 'app/package-lock.json')
 await copyIntoBundle('.env.production.example', 'app/.env.production.example')
+await copyIntoBundle('docs', 'app/docs')
 await copyIntoBundle('deployment', 'deployment')
 
 if (includeNodeModules) {
@@ -149,6 +186,9 @@ const manifest = {
   deployment: {
     envExamplePath: 'deployment/appliance/linux/jbhub-appliance.env.example',
     serviceTemplatePath: 'deployment/appliance/linux/jbhub-appliance.service',
+    installScriptPath: 'deployment/appliance/linux/install-appliance.sh',
+    upgradeScriptPath: 'deployment/appliance/linux/upgrade-appliance.sh',
+    shellWrappersPath: 'deployment/appliance/linux',
   },
   offlineArtifacts: copiedArtifacts,
 }

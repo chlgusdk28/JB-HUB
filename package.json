@@ -12,6 +12,8 @@
     "build": "node scripts/run-vite.mjs build",
     "auth:mint-token": "node scripts/mint-dev-jwt.mjs",
     "test:api": "node scripts/test-api.mjs",
+    "test:airgap": "node scripts/test-airgap-builds.mjs",
+    "test:airgap:shell": "node scripts/test-airgap-shell-executor.mjs",
     "smoke:web": "node scripts/smoke-web.mjs",
     "smoke": "npm run test:api && npm run build && npm run smoke:web",
     "package:finance": "node scripts/build-finance-runtime-bundle.mjs",
